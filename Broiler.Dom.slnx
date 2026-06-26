@@ -1,0 +1,6 @@
+<Solution>
+  <Project Path="Broiler.Dom.Html.Tests/Broiler.Dom.Html.Tests.csproj" />
+  <Project Path="Broiler.Dom.Html/Broiler.Dom.Html.csproj" />
+  <Project Path="Broiler.Dom.Tests/Broiler.Dom.Tests.csproj" />
+  <Project Path="Broiler.Dom/Broiler.Dom.csproj" />
+</Solution>
