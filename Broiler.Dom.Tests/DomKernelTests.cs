@@ -155,6 +155,24 @@ public sealed class DomKernelTests
     }
 
     [Fact]
+    public void SetAttribute_Prefixed_Name_Stores_Verbatim_Without_Throwing()
+    {
+        // Per DOM, Element.setAttribute() performs NO namespace splitting: a
+        // prefixed qualified name is the attribute's local name with no
+        // namespace. Regression (WPT issue #1100 svg-use-animation-crash): this
+        // used to throw "A prefixed name requires a namespace URI", crashing
+        // HTML parsing of inline SVG that carries xlink:href.
+        var document = new DomDocument();
+        var element = document.CreateElementNS(DomNamespaces.Svg, "use");
+
+        element.SetAttribute("xlink:href", "#target");
+
+        Assert.Equal("#target", element.GetAttribute("xlink:href"));
+        // Not placed in any namespace — setAttribute does not split the prefix.
+        Assert.Null(element.GetAttributeNS("http://www.w3.org/1999/xlink", "href"));
+    }
+
+    [Fact]
     public void Id_Index_Tracks_Connection_Mutation_And_Tree_Order()
     {
         var document = CreateHtmlDocument(out var body);
