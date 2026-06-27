@@ -71,7 +71,11 @@ public class DomElement : DomNode
     }
 
     public void SetAttribute(string qualifiedName, string value) =>
-        SetAttributeCore(new DomName(null, qualifiedName.ToLowerInvariant()), value);
+        // Per DOM, Element.setAttribute() does NO namespace splitting: the whole
+        // qualified name is the attribute's local name (no namespace). This also
+        // keys identically to GetAttribute/RemoveAttribute below, and avoids
+        // throwing on prefixed names like SVG's "xlink:href".
+        SetAttributeCore(DomName.CreateLocal(qualifiedName.ToLowerInvariant()), value);
 
     public void SetAttributeNS(string? namespaceUri, string qualifiedName, string value) =>
         SetAttributeCore(new DomName(namespaceUri, qualifiedName), value);

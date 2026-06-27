@@ -38,6 +38,32 @@ public readonly record struct DomName
         QualifiedName = qualifiedName;
     }
 
+    // Non-splitting constructor: the whole name is the local name, with no
+    // prefix or namespace processing (used by CreateLocal).
+    private DomName(string localName)
+    {
+        LocalName = localName;
+        QualifiedName = localName;
+        Prefix = null;
+        NamespaceUri = null;
+    }
+
+    /// <summary>
+    /// Creates a name with NO namespace and NO prefix processing: the entire
+    /// <paramref name="localName"/> becomes the local (and qualified) name even
+    /// if it contains a ':'. This matches DOM <c>Element.setAttribute()</c>,
+    /// which performs no namespace splitting — e.g. on an HTML-parsed SVG
+    /// element <c>setAttribute("xlink:href", …)</c> stores an attribute named
+    /// literally "xlink:href" (no namespace) rather than throwing. The
+    /// namespace-aware constructor is for <c>setAttributeNS</c>.
+    /// </summary>
+    public static DomName CreateLocal(string localName)
+    {
+        if (string.IsNullOrWhiteSpace(localName))
+            throw new ArgumentException("A local name is required.", nameof(localName));
+        return new DomName(localName);
+    }
+
     public string? NamespaceUri { get; }
 
     public string? Prefix { get; }
