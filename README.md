@@ -21,6 +21,18 @@ Broiler.DOM is an independent Broiler component. It interoperates with Broiler.H
 whose rendering lineage comes from HTML Renderer, but it must not be represented as an
 official HTML Renderer component or as endorsed by that project's contributors.
 
+## Ownership and compatibility
+
+`Broiler.Dom` is the only mutable tree and owns engine-neutral DOM algorithms;
+`Broiler.Dom.Html` owns parsing and serialization. Renderer geometry and JavaScript
+wrappers remain in HtmlBridge because they depend on computed style, layout, or the
+script runtime.
+
+The HtmlBridge `DomElement` and `HtmlTreeBuilder` surfaces are versioned as
+`htmlbridge-dom-adapter/v1`. They delegate to this component rather than owning a
+second tree or parser, and are removable only at the
+`htmlbridge-public-surface/v2` boundary.
+
 ## Build and test
 
 ```bash
