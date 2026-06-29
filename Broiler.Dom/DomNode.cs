@@ -20,6 +20,14 @@ public abstract class DomNode
 
     public DomNodeType NodeType { get; }
 
+    /// <summary>
+    /// The character data of a text/comment node (DOM <c>nodeValue</c>); <c>null</c> for
+    /// element and document nodes. Lets a consumer read a node's text through the canonical
+    /// type without depending on the concrete node class — e.g. a host that represents text
+    /// with its own <see cref="DomNodeType.Text"/> node subtype can override this.
+    /// </summary>
+    public virtual string? NodeValue => null;
+
     public virtual DomDocument OwnerDocument =>
         _ownerDocument ?? throw new InvalidOperationException("The document node owns itself.");
 

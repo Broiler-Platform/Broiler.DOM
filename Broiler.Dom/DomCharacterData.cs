@@ -29,6 +29,9 @@ public abstract class DomCharacterData(DomNodeType nodeType, DomDocument ownerDo
 
     public int Length => _data.Length;
 
+    /// <summary>The character data, exposed through the canonical <see cref="DomNode.NodeValue"/>.</summary>
+    public override string? NodeValue => _data;
+
     public void AppendData(string data) => Data += data;
 }
 
