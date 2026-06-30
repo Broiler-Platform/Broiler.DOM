@@ -35,6 +35,29 @@ public sealed class HtmlDocumentParserTests
     }
 
     [Fact]
+    public void Leading_Text_Without_Body_Tag_Opens_The_Body()
+    {
+        // A document without an explicit <body> that begins with non-whitespace
+        // text (ubiquitous in WPT reftests: "Test passes if …") must place that
+        // text in the body, not the head — otherwise it never renders and the
+        // following content shifts up by a line.
+        var result = new HtmlDocumentParser().ParseDocument(
+            "<style>.x{}</style>\nTest passes if no red is visible.\n<div></div>");
+
+        var bodyText = result.Document.Body!.ChildNodes
+            .OfType<DomText>()
+            .Select(t => t.Data)
+            .FirstOrDefault(d => d.Contains("Test passes"));
+        Assert.NotNull(bodyText);
+
+        // The head holds only the metadata, never the rendered instruction text.
+        var headText = string.Concat(result.Document.Head!.ChildNodes
+            .OfType<DomText>()
+            .Select(t => t.Data));
+        Assert.DoesNotContain("Test passes", headText);
+    }
+
+    [Fact]
     public void Fragment_Parser_Uses_Context_Sensitive_Table_Rules()
     {
         var result = new HtmlDocumentParser().ParseFragment(

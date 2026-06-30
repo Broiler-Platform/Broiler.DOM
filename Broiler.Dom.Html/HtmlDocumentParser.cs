@@ -189,7 +189,20 @@ public sealed class HtmlDocumentParser
 
                     var parent = openElements.Count > 0 ? openElements.Peek() : body;
                     if (!bodyOpened && ReferenceEquals(parent, body))
-                        parent = head;
+                    {
+                        // HTML tree construction ("in head" / "after head"): leading
+                        // whitespace before the body is ignored (kept in the head as
+                        // non-rendering text), but the first non-whitespace character
+                        // opens the body and is inserted there. Previously *all*
+                        // pre-body text was redirected to the head, so a document
+                        // without an explicit <body> that began with text — extremely
+                        // common in WPT reftests ("Test passes if …") — silently
+                        // dropped that text from the rendered output.
+                        if (string.IsNullOrWhiteSpace(token.Data))
+                            parent = head;
+                        else
+                            bodyOpened = true;
+                    }
                     if (TableElements.Contains(parent.LocalName) && !string.IsNullOrWhiteSpace(token.Data))
                         parent = FosterParent(openElements, body);
                     parent.AppendChild(document.CreateTextNode(token.Data));
