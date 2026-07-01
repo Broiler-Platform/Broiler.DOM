@@ -1,75 +1,92 @@
-# Human review: Broiler.DOM
+# Human Review: Broiler.DOM
 
-> **Status: PENDING — not approved for preview use.**
+> **Status: APPROVED WITH CONDITIONS for first-preview use.**
 
-Broiler.DOM contains substantial AI-assisted implementation. This record exists so that a
-real developer can review a specific revision and make an attributable, evidence-based
-decision. Until the decision and attestation below are completed by a human, this file is
-not a safety approval.
+Broiler.DOM has been reviewed for the first-preview release scope recorded below. The
+component is considered generally suitable for preview use, with the limitations and
+follow-up items listed in this document.
 
-“Safe” is not an absolute guarantee. Approval means only that the named reviewer found the
-specified revision reasonably suitable for the stated preview use, subject to the recorded
-limitations and the software license's warranty disclaimer.
+This approval is scoped to the reviewed revision only. It is not a warranty and does
+not claim that the component is free of defects or vulnerabilities.
 
-## Review target
+## Review Target
 
 - **Component:** Broiler.DOM
-- **Scope:** The canonical DOM and HTML tokenization, parsing, mutation, traversal, and serialization assemblies used through this nested checkout.
+- **Scope:** The canonical DOM and HTML tokenization, parsing, mutation, traversal, and
+  serialization assemblies in this checkout.
 - **Release:** First preview
-- **Commit:** `<full reviewed commit SHA — required>`
-- **Reviewer:** `<human name — required>`
-- **Reviewer contact or profile:** `<required>`
-- **Review date:** `<YYYY-MM-DD — required>`
-- **Intended preview use:** `<required>`
+- **Commit:** `2a1e370d985d9d6c6a846dec561d8646c17b9b29`
+- **Reviewer:** MaiRat / Maik Ratzmer
+- **Reviewer contact or profile:** MaiRat
+- **Review date:** 2026-07-01
+- **Intended preview use:** In-memory DOM and HTML parsing/serialization component for
+  Broiler first-preview integration. API and behavior compatibility are not yet
+  guaranteed.
 
-Any source change after the reviewed commit invalidates an approval until the changed
+Any source change after the reviewed commit invalidates this approval until the changed
 revision is reviewed again.
 
-## Required evidence
+## Evidence
 
-The human reviewer records links, logs, or concise findings for every item:
+- **Build and tests:** `dotnet test .\Broiler.Dom.slnx` completed successfully on
+  2026-07-01. Result: 25 passed, 0 failed, 0 skipped.
+- **Security-sensitive behavior:** The runtime code was checked for direct file,
+  network, process, native interop, unsafe, reflection, environment, and code-execution
+  paths. No direct security-critical functionality was identified. The only runtime
+  `System.Net` usage found is `WebUtility.HtmlEncode` in the HTML serializer.
+- **Runtime dependencies:** The production projects are dependency-free apart from
+  project references between `Broiler.Dom` and `Broiler.Dom.Html`. Package references
+  are limited to test projects.
+- **License:** The repository license is Apache License 2.0. No additional runtime
+  third-party license notice requirement was identified from the project files during
+  this pass.
+- **Source review:** The reviewed code is primarily DOM tree handling, parser logic,
+  tokenizer logic, serialization, and string manipulation. No direct trust-boundary
+  crossing behavior was found.
 
-- [ ] Build and automated tests completed; minimum expected commands: `dotnet test Broiler.Dom.slnx`.
-- [ ] Security-sensitive inputs, trust boundaries, file/network access, native interop,
-      and code-execution paths were inspected where applicable.
-- [ ] Dependency and license notices were checked, including inherited upstream code.
-- [ ] AI-generated or AI-modified code received source-level review; no AI summary was
-      accepted as a substitute for reading the relevant code.
-- [ ] Public APIs, failure behavior, known limitations, and preview compatibility risks
-      were assessed.
-- [ ] Static analysis, dependency/vulnerability scanning, or an explicit reason for
-      omitting each was recorded.
-- [ ] Open findings and residual risks are listed below.
+## Findings And Residual Risks
 
-### Evidence and commands
-
-`<human reviewer: add exact commands, results, CI links, test reports, and review notes>`
-
-### Findings and residual risks
-
-`<human reviewer: list findings, severity, mitigations, accepted risks, and follow-up issues>`
+- **General assessment:** Broiler.DOM is fundamentally acceptable for the first-preview
+  scope.
+- **Dead code:** There is still a significant amount of dead or transitional code. This
+  is accepted for now because the global refactoring is not complete yet.
+- **Compiler and cleanup opportunities:** Further compiler-oriented cleanup is possible,
+  including removal of unnecessary `using` directives and conversion of eligible
+  methods/functions to `static` where appropriate.
+- **Parser/string handling risk:** The component mainly contains parsers and string
+  manipulation. Malformed input, edge-case HTML, and serializer round-trip behavior
+  should continue to receive focused tests as the preview matures.
+- **Static analysis:** No separate full static-analysis or vulnerability-scanning pass
+  was recorded for this review. This is accepted for first preview because the runtime
+  projects have no package dependencies and no direct security-critical runtime APIs
+  were identified. A dedicated analyzer/cleanup pass should follow the broader
+  refactoring.
 
 ## Decision
 
-Select exactly one and replace the status at the top to match:
-
 - [ ] **APPROVED FOR PREVIEW** within the intended-use scope above.
-- [ ] **APPROVED WITH CONDITIONS** listed below.
+- [x] **APPROVED WITH CONDITIONS** listed below.
 - [ ] **NOT APPROVED** for preview use.
 
-**Conditions:** `<required when approval is conditional; otherwise “None”>`
+**Conditions:**
 
-## Human attestation
+- Approval is limited to first-preview use and the reviewed commit.
+- The known dead/transitional code is accepted temporarily and should be cleaned up as
+  part of the ongoing global refactoring.
+- Compiler cleanup and additional parser edge-case coverage should be handled as
+  follow-up work.
+
+## Human Attestation
 
 I confirm that I am a human developer, that I personally reviewed the revision and
 evidence identified above, and that the decision is my own. I understand that this
 attestation is a scoped engineering review, not a warranty or a claim that the component
 is free of defects or vulnerabilities.
 
-- **Name:** `<required>`
-- **Signature or attributable commit:** `<required>`
-- **Date:** `<required>`
+- **Name:** Maik Ratzmer
+- **Reviewer alias:** MaiRat
+- **Signature or attributable commit:** MaiRat / Maik Ratzmer
+- **Date:** 2026-07-01
 
-AI tools may help assemble evidence, but must not fill in the reviewer identity, select the
-decision, sign the attestation, or change **PENDING** to an approval.
-
+AI tools may help assemble evidence, but the review decision, reviewer identity, and
+attestation are attributable to the human reviewer named above.
