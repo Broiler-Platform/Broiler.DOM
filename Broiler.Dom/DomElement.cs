@@ -23,13 +23,7 @@ public class DomElement : DomNode
 
     public DomName Name { get; private set; }
 
-    public string TagName => Name.QualifiedName;
-
     public string LocalName => Name.LocalName;
-
-    public string? NamespaceUri => Name.NamespaceUri;
-
-    public string? Prefix => Name.Prefix;
 
     public IReadOnlyDictionary<(string? NamespaceUri, string LocalName), DomAttribute> Attributes =>
         _readOnlyAttributes;
@@ -79,16 +73,8 @@ public class DomElement : DomNode
         // throwing on prefixed names like SVG's "xlink:href".
         SetAttributeCore(DomName.CreateLocal(qualifiedName.ToLowerInvariant()), value);
 
-    public void SetAttributeNS(string? namespaceUri, string qualifiedName, string value) =>
-        SetAttributeCore(new DomName(namespaceUri, qualifiedName), value);
-
     public bool RemoveAttribute(string qualifiedName) =>
         RemoveAttributeCore(null, qualifiedName.ToLowerInvariant());
-
-    public bool RemoveAttributeNS(string? namespaceUri, string localName) =>
-        RemoveAttributeCore(NormalizeNamespace(namespaceUri), localName);
-
-    protected void SetName(DomName name) => Name = name;
 
     internal override DomNode CloneShallow(DomDocument ownerDocument)
     {

@@ -14,50 +14,9 @@ public sealed class DomDocument : DomNode
 
     public override DomDocument OwnerDocument => this;
 
-    public DomElement? DocumentElement => ChildNodes.OfType<DomElement>().FirstOrDefault();
-
-    public DomDocumentType? DocumentType => ChildNodes.OfType<DomDocumentType>().FirstOrDefault();
-
-    public DomElement? Head => DocumentElement?.ChildNodes.OfType<DomElement>()
-        .FirstOrDefault(static element => string.Equals(element.LocalName, "head", StringComparison.OrdinalIgnoreCase));
-
-    public DomElement? Body => DocumentElement?.ChildNodes.OfType<DomElement>()
-        .FirstOrDefault(static element => string.Equals(element.LocalName, "body", StringComparison.OrdinalIgnoreCase));
-
     public ulong Version { get; private set; }
 
     public event Action<DomMutationRecord>? Mutated;
-
-    public DomElement CreateElement(string localName) =>
-        new(this, new DomName(DomNamespaces.Html, localName.ToLowerInvariant()));
-
-    public DomElement CreateElementNS(string? namespaceUri, string qualifiedName) =>
-        new(this, new DomName(namespaceUri, qualifiedName));
-
-    public DomText CreateTextNode(string data) => new(this, data);
-
-    public DomComment CreateComment(string data) => new(this, data);
-
-    public DomDocumentFragment CreateDocumentFragment() => new(this);
-
-    public DomDocumentType CreateDocumentType(string name, string publicId = "", string systemId = "") =>
-        new(this, name, publicId, systemId);
-
-    public DomElement? GetElementById(string id)
-    {
-        if (!_elementsById.TryGetValue(id, out var candidates) || candidates.Count == 0)
-            return null;
-
-        return Descendants().OfType<DomElement>().FirstOrDefault(candidates.Contains);
-    }
-
-    public IEnumerable<DomElement> GetElementsByTagName(string localName) =>
-        Descendants()
-            .OfType<DomElement>()
-            .Where(static element => element.NodeType == DomNodeType.Element)
-            .Where(element =>
-                localName == "*" ||
-                string.Equals(element.LocalName, localName, StringComparison.OrdinalIgnoreCase));
 
     public DomNode AdoptNode(DomNode node)
     {

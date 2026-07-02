@@ -35,10 +35,6 @@ public abstract class DomNode
 
     public IReadOnlyList<DomNode> ChildNodes => _childNodes;
 
-    public DomNode? FirstChild => _children.Count == 0 ? null : _children[0];
-
-    public DomNode? LastChild => _children.Count == 0 ? null : _children[^1];
-
     public DomNode? PreviousSibling
     {
         get
@@ -119,23 +115,6 @@ public abstract class DomNode
         return node;
     }
 
-    public DomNode ReplaceChild(DomNode node, DomNode child)
-    {
-        ArgumentNullException.ThrowIfNull(node);
-        ArgumentNullException.ThrowIfNull(child);
-
-        if (!ReferenceEquals(child.ParentNode, this))
-            throw DomException.NotFound("The node to replace is not a child of this node.");
-
-        if (ReferenceEquals(node, child))
-            return child;
-
-        var reference = child.NextSibling;
-        RemoveChild(child);
-        InsertBefore(node, reference);
-        return child;
-    }
-
     public DomNode RemoveChild(DomNode child)
     {
         ArgumentNullException.ThrowIfNull(child);
@@ -162,8 +141,6 @@ public abstract class DomNode
             NextSibling: nextSibling));
         return child;
     }
-
-    public void Remove() => ParentNode?.RemoveChild(this);
 
     public DomNode CloneNode(bool deep = false)
     {

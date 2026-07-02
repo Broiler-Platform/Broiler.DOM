@@ -7,6 +7,4 @@ public readonly record struct DomAttribute(DomName Name, string Value)
     public string LocalName => Name.LocalName;
 
     public string? NamespaceUri => Name.NamespaceUri;
-
-    public string? Prefix => Name.Prefix;
 }

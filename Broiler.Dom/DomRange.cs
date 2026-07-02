@@ -20,68 +20,8 @@ public sealed class DomRange : IDisposable
     }
 
     public DomNode Root { get; }
-    public DomNode StartContainer => _startContainer;
-    public int StartOffset => _startOffset;
-    public DomNode EndContainer => _endContainer;
-    public int EndOffset => _endOffset;
-    public bool Collapsed => ReferenceEquals(StartContainer, EndContainer) && StartOffset == EndOffset;
 
-    public DomNode CommonAncestorContainer
-    {
-        get
-        {
-            var ancestors = StartContainer.InclusiveAncestors().ToHashSet();
-            return EndContainer.InclusiveAncestors().First(ancestors.Contains);
-        }
-    }
-
-    public void SetStart(DomNode container, int offset)
-    {
-        ValidateBoundary(container, offset);
-        _startContainer = container;
-        _startOffset = offset;
-        if (CompareBoundaryPoints(StartContainer, StartOffset, EndContainer, EndOffset) > 0)
-        {
-            _endContainer = container;
-            _endOffset = offset;
-        }
-    }
-
-    public void SetEnd(DomNode container, int offset)
-    {
-        ValidateBoundary(container, offset);
-        _endContainer = container;
-        _endOffset = offset;
-        if (CompareBoundaryPoints(StartContainer, StartOffset, EndContainer, EndOffset) > 0)
-        {
-            _startContainer = container;
-            _startOffset = offset;
-        }
-    }
-
-    public void SelectNode(DomNode node)
-    {
-        var parent = node.ParentNode ?? throw DomException.InvalidState("The node has no parent.");
-        var index = parent.ChildNodes.IndexOfReference(node);
-        SetStart(parent, index);
-        SetEnd(parent, index + 1);
-    }
-
-    public void SelectNodeContents(DomNode node)
-    {
-        SetStart(node, 0);
-        SetEnd(node, BoundaryLength(node));
-    }
-
-    public void Collapse(bool toStart)
-    {
-        if (toStart)
-            SetEnd(StartContainer, StartOffset);
-        else
-            SetStart(EndContainer, EndOffset);
-    }
-
-    public int CompareBoundaryPoints(
+    public static int CompareBoundaryPoints(
         DomNode containerA,
         int offsetA,
         DomNode containerB,
@@ -160,18 +100,5 @@ public sealed class DomRange : IDisposable
     {
         var ancestors = first.InclusiveAncestors().ToHashSet();
         return second.InclusiveAncestors().First(ancestors.Contains);
-    }
-
-    private static int BoundaryLength(DomNode node) => node switch
-    {
-        DomCharacterData data => data.Data.Length,
-        _ => node.ChildNodes.Count
-    };
-
-    private static void ValidateBoundary(DomNode container, int offset)
-    {
-        ArgumentNullException.ThrowIfNull(container);
-        if (offset < 0 || offset > BoundaryLength(container))
-            throw DomException.IndexSize("The boundary offset is outside the node.");
     }
 }
