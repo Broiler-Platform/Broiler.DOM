@@ -38,6 +38,19 @@ public static class HtmlSerializer
             "link", "meta", "param", "source", "track", "wbr"
         };
 
+    /// <summary>
+    /// Returns <c>true</c> when <paramref name="property"/> is a CSS shorthand
+    /// that, if emitted after its longhands, would reset those longhands to
+    /// initial values (e.g. <c>margin</c> resets <c>margin-left</c>).
+    /// </summary>
+    public static bool IsShorthandProperty(string property) =>
+        property switch
+        {
+            "margin" or "padding" or "border" or "background"
+                or "font" or "list-style" or "outline" => true,
+            _ => false,
+        };
+
     public static string Serialize<TNode>(
         TNode node,
         HtmlSerializationAdapter<TNode> adapter,
