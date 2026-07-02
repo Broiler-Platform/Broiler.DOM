@@ -28,12 +28,31 @@ public abstract class DomNode
     /// </summary>
     public virtual string? NodeValue => null;
 
+    public void Remove() => ParentNode?.RemoveChild(this);
+
     public virtual DomDocument OwnerDocument =>
         _ownerDocument ?? throw new InvalidOperationException("The document node owns itself.");
 
     public DomNode? ParentNode { get; private set; }
 
     public IReadOnlyList<DomNode> ChildNodes => _childNodes;
+
+    public DomNode ReplaceChild(DomNode node, DomNode child)
+    {
+        ArgumentNullException.ThrowIfNull(node);
+        ArgumentNullException.ThrowIfNull(child);
+
+        if (!ReferenceEquals(child.ParentNode, this))
+            throw DomException.NotFound("The node to replace is not a child of this node.");
+
+        if (ReferenceEquals(node, child))
+            return child;
+
+        var reference = child.NextSibling;
+        RemoveChild(child);
+        InsertBefore(node, reference);
+        return child;
+    }
 
     public DomNode? PreviousSibling
     {
@@ -60,6 +79,10 @@ public abstract class DomNode
                 : null;
         }
     }
+
+    public DomNode? FirstChild => _children.Count == 0 ? null : _children[0];
+
+    public DomNode? LastChild => _children.Count == 0 ? null : _children[^1];
 
     public bool IsConnected => GetRootNode() is DomDocument;
 

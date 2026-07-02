@@ -25,6 +25,18 @@ public class DomElement : DomNode
 
     public string LocalName => Name.LocalName;
 
+    public string TagName => Name.QualifiedName;
+
+    public string? NamespaceUri => Name.NamespaceUri;
+
+    protected void SetName(DomName name) => Name = name;
+
+    public bool RemoveAttributeNS(string? namespaceUri, string localName) =>
+    RemoveAttributeCore(NormalizeNamespace(namespaceUri), localName);
+
+    public void SetAttributeNS(string? namespaceUri, string qualifiedName, string value) =>
+    SetAttributeCore(new DomName(namespaceUri, qualifiedName), value);
+
     public IReadOnlyDictionary<(string? NamespaceUri, string LocalName), DomAttribute> Attributes =>
         _readOnlyAttributes;
 

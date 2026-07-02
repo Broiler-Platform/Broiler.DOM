@@ -16,7 +16,21 @@ public sealed class DomDocument : DomNode
 
     public ulong Version { get; private set; }
 
+    public DomDocumentType? DocumentType => ChildNodes.OfType<DomDocumentType>().FirstOrDefault();
+
     public event Action<DomMutationRecord>? Mutated;
+
+    public DomDocumentType CreateDocumentType(string name, string publicId = "", string systemId = "") => new(this, name, publicId, systemId);
+
+    public DomText CreateTextNode(string data) => new(this, data);
+
+    public DomComment CreateComment(string data) => new(this, data);
+
+    public DomDocumentFragment CreateDocumentFragment() => new(this);
+
+    public DomElement? DocumentElement => ChildNodes.OfType<DomElement>().FirstOrDefault();
+
+    public DomElement? Body => DocumentElement?.ChildNodes.OfType<DomElement>().FirstOrDefault(static element => string.Equals(element.LocalName, "body", StringComparison.OrdinalIgnoreCase));
 
     public DomNode AdoptNode(DomNode node)
     {
@@ -54,6 +68,11 @@ public sealed class DomDocument : DomNode
 
         return clone;
     }
+
+    public DomElement CreateElement(string localName) => new(this, new DomName(DomNamespaces.Html, localName.ToLowerInvariant()));
+
+    public DomElement CreateElementNS(string? namespaceUri, string qualifiedName) =>
+        new(this, new DomName(namespaceUri, qualifiedName));
 
     internal override DomNode CloneShallow(DomDocument ownerDocument) =>
         throw new InvalidOperationException("Document cloning is not supported by the Phase 1 kernel.");
@@ -98,5 +117,13 @@ public sealed class DomDocument : DomNode
     {
         foreach (var element in node.InclusiveDescendants().OfType<DomElement>())
             UpdateElementId(element, element.Id, null);
+    }
+
+    public DomElement? GetElementById(string id)
+    {
+        if (!_elementsById.TryGetValue(id, out var candidates) || candidates.Count == 0)
+            return null;
+
+        return Descendants().OfType<DomElement>().FirstOrDefault(candidates.Contains);
     }
 }
