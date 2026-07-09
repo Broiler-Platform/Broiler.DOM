@@ -21,6 +21,74 @@ public sealed class DomRange : IDisposable
 
     public DomNode Root { get; }
 
+    /// <summary>The node in which the range starts.</summary>
+    public DomNode StartContainer => _startContainer;
+
+    /// <summary>The offset of the range's start within <see cref="StartContainer"/>.</summary>
+    public int StartOffset => _startOffset;
+
+    /// <summary>The node in which the range ends.</summary>
+    public DomNode EndContainer => _endContainer;
+
+    /// <summary>The offset of the range's end within <see cref="EndContainer"/>.</summary>
+    public int EndOffset => _endOffset;
+
+    /// <summary>Whether the range is collapsed — its two boundary points are equal.</summary>
+    public bool Collapsed =>
+        ReferenceEquals(_startContainer, _endContainer) && _startOffset == _endOffset;
+
+    /// <summary>
+    /// Sets the range's start boundary (DOM Standard §4.3 "set the start of a range").
+    /// If the new start is after the current end, or is in a different tree, the range
+    /// collapses onto the new start.
+    /// </summary>
+    public void SetStart(DomNode container, int offset)
+    {
+        ArgumentNullException.ThrowIfNull(container);
+        if (offset < 0)
+            throw new ArgumentOutOfRangeException(nameof(offset), "Range offset must be non-negative.");
+
+        var collapse = IsAfter(container, offset, _endContainer, _endOffset);
+        _startContainer = container;
+        _startOffset = offset;
+        if (collapse)
+        {
+            _endContainer = container;
+            _endOffset = offset;
+        }
+    }
+
+    /// <summary>
+    /// Sets the range's end boundary (DOM Standard §4.3 "set the end of a range").
+    /// If the new end is before the current start, or is in a different tree, the range
+    /// collapses onto the new end.
+    /// </summary>
+    public void SetEnd(DomNode container, int offset)
+    {
+        ArgumentNullException.ThrowIfNull(container);
+        if (offset < 0)
+            throw new ArgumentOutOfRangeException(nameof(offset), "Range offset must be non-negative.");
+
+        var collapse = IsBefore(container, offset, _startContainer, _startOffset);
+        _endContainer = container;
+        _endOffset = offset;
+        if (collapse)
+        {
+            _startContainer = container;
+            _startOffset = offset;
+        }
+    }
+
+    // A boundary point in a different tree is treated as "after"/"before" so the
+    // range collapses (DOM: "or root is not equal to this's root").
+    private static bool IsAfter(DomNode container, int offset, DomNode other, int otherOffset) =>
+        !ReferenceEquals(container.GetRootNode(), other.GetRootNode()) ||
+        CompareBoundaryPoints(container, offset, other, otherOffset) > 0;
+
+    private static bool IsBefore(DomNode container, int offset, DomNode other, int otherOffset) =>
+        !ReferenceEquals(container.GetRootNode(), other.GetRootNode()) ||
+        CompareBoundaryPoints(container, offset, other, otherOffset) < 0;
+
     public static int CompareBoundaryPoints(
         DomNode containerA,
         int offsetA,

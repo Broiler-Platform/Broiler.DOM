@@ -2,13 +2,28 @@ using System;
 
 namespace Broiler.Dom;
 
-public sealed class DomException(string message) : InvalidOperationException(message)
+public sealed class DomException : InvalidOperationException
 {
-    internal static DomException HierarchyRequest(string message) => new(message);
+    public DomException(string message)
+        : this("Error", message)
+    {
+    }
 
-    internal static DomException NotFound(string message) => new(message);
+    private DomException(string name, string message)
+        : base(message)
+        => Name = name;
 
-    internal static DomException Namespace(string message) => new(message);
+    /// <summary>
+    /// The DOM error name (e.g. <c>"HierarchyRequestError"</c>), per the
+    /// <c>DOMException</c> interface. Defaults to <c>"Error"</c> when unspecified.
+    /// </summary>
+    public string Name { get; }
 
-    internal static DomException WrongDocument(string message) => new(message);
+    internal static DomException HierarchyRequest(string message) => new("HierarchyRequestError", message);
+
+    internal static DomException NotFound(string message) => new("NotFoundError", message);
+
+    internal static DomException Namespace(string message) => new("NamespaceError", message);
+
+    internal static DomException WrongDocument(string message) => new("WrongDocumentError", message);
 }

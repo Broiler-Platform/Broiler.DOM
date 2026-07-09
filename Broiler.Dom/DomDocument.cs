@@ -126,4 +126,25 @@ public sealed class DomDocument : DomNode
 
         return Descendants().OfType<DomElement>().FirstOrDefault(candidates.Contains);
     }
+
+    /// <summary>
+    /// Returns the document's element descendants whose qualified name matches
+    /// <paramref name="qualifiedName"/> in tree order (DOM Standard
+    /// <c>getElementsByTagName</c>). The special value <c>"*"</c> matches every
+    /// element; matching is otherwise ASCII case-insensitive.
+    /// </summary>
+    public IReadOnlyList<DomElement> GetElementsByTagName(string qualifiedName)
+    {
+        ArgumentNullException.ThrowIfNull(qualifiedName);
+
+        var matchAll = qualifiedName == "*";
+        var result = new List<DomElement>();
+        foreach (var element in Descendants().OfType<DomElement>())
+        {
+            if (matchAll || string.Equals(element.TagName, qualifiedName, StringComparison.OrdinalIgnoreCase))
+                result.Add(element);
+        }
+
+        return result;
+    }
 }
