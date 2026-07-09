@@ -30,6 +30,8 @@ public sealed class DomDocument : DomNode
 
     public DomElement? DocumentElement => ChildNodes.OfType<DomElement>().FirstOrDefault();
 
+    public DomElement? Head => DocumentElement?.ChildNodes.OfType<DomElement>().FirstOrDefault(static element => string.Equals(element.LocalName, "head", StringComparison.OrdinalIgnoreCase));
+
     public DomElement? Body => DocumentElement?.ChildNodes.OfType<DomElement>().FirstOrDefault(static element => string.Equals(element.LocalName, "body", StringComparison.OrdinalIgnoreCase));
 
     public DomNode AdoptNode(DomNode node)
