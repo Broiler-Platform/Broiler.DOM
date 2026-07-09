@@ -27,6 +27,9 @@ public class DomElement : DomNode
 
     public string TagName => Name.QualifiedName;
 
+    /// <summary>The namespace prefix of the element's qualified name, or <c>null</c>.</summary>
+    public string? Prefix => Name.Prefix;
+
     public string? NamespaceUri => Name.NamespaceUri;
 
     protected void SetName(DomName name) => Name = name;
