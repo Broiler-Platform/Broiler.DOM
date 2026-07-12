@@ -39,6 +39,26 @@ public static class HtmlSerializer
         };
 
     /// <summary>
+    /// HTML elements whose character-data children serialize literally (not
+    /// HTML-escaped) per the HTML Standard section 13.3 "Serialising HTML
+    /// fragments" - the raw-text (script, style), escapable raw-text, and legacy
+    /// raw-text elements. Single source of truth for both this serializer's
+    /// leaf-text branch and compatibility adapters (e.g. the HtmlBridge serializer).
+    /// </summary>
+    public static readonly IReadOnlySet<string> RawTextElements =
+        new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        {
+            "script", "style", "xmp", "iframe",
+            "noembed", "noframes", "noscript", "plaintext"
+        };
+
+    /// <summary>
+    /// Whether <paramref name="tagName"/> is an element whose text content is
+    /// serialized literally rather than HTML-escaped (see <see cref="RawTextElements"/>).
+    /// </summary>
+    public static bool IsRawTextElement(string tagName) => RawTextElements.Contains(tagName);
+
+    /// <summary>
     /// Returns <c>true</c> when <paramref name="property"/> is a CSS shorthand
     /// that, if emitted after its longhands, would reset those longhands to
     /// initial values (e.g. <c>margin</c> resets <c>margin-left</c>).
@@ -175,7 +195,7 @@ public static class HtmlSerializer
 
             if (adapter.GetText(node) is { Length: > 0 } text)
             {
-                builder.Append(tagName is "script" or "style" ? text : Encode(text));
+                builder.Append(IsRawTextElement(tagName) ? text : Encode(text));
             }
             else if (adapter.GetRawInnerHtml(node) is { Length: > 0 } rawInnerHtml)
             {
