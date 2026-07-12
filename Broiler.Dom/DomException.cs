@@ -26,4 +26,8 @@ public sealed class DomException : InvalidOperationException
     internal static DomException Namespace(string message) => new("NamespaceError", message);
 
     internal static DomException WrongDocument(string message) => new("WrongDocumentError", message);
+
+    internal static DomException InvalidState(string message) => new("InvalidStateError", message);
+
+    internal static DomException InvalidNodeType(string message) => new("InvalidNodeTypeError", message);
 }
