@@ -393,4 +393,152 @@ public sealed class DomRangeTests
         range.SetEnd(body, 2);     // end after <p> — <p> is partially selected
         Assert.Throws<DomException>(() => range.SurroundContents(document.CreateElement("em")));
     }
+
+    [Fact]
+    public void SurroundContents_Throws_When_A_Comment_Boundary_Is_Partially_Selected()
+    {
+        // A Comment is a non-Text node; a range that starts inside one and ends elsewhere
+        // partially selects it and cannot be surrounded (Acid3 test 11 semantics).
+        var document = HtmlDocument(out var body);
+        var comment = document.CreateComment("hello");
+        var after = document.CreateElement("b");
+        body.AppendChild(comment);
+        body.AppendChild(after);
+
+        using var range = new DomRange(body);
+        range.SetStart(comment, 2); // inside the comment's data
+        range.SetEnd(body, 2);      // after <b>
+        Assert.Throws<DomException>(() => range.SurroundContents(document.CreateElement("em")));
+    }
+
+    // ---- Node-factory seams ---------------------------------------------------
+
+    private sealed class RecordingRange(DomNode root) : DomRange(root, trackMutations: true)
+    {
+        public int FragmentsCreated { get; private set; }
+        public int Clones { get; private set; }
+
+        protected override DomNode CreateResultFragment()
+        {
+            FragmentsCreated++;
+            return base.CreateResultFragment();
+        }
+
+        protected override DomNode CloneForRange(DomNode node, bool deep)
+        {
+            Clones++;
+            return base.CloneForRange(node, deep);
+        }
+
+        protected override DomRange CreateSubRange(DomNode root) => new RecordingRange(root);
+    }
+
+    [Fact]
+    public void Content_Operations_Route_Node_Creation_Through_The_Overridable_Seams()
+    {
+        var document = HtmlDocument(out var body);
+        var p = document.CreateElement("p");
+        p.AppendChild(document.CreateTextNode("abcdef"));
+        body.AppendChild(p);
+
+        using var range = new RecordingRange(body);
+        range.SetStart(p.FirstChild!, 1);
+        range.SetEnd(p.FirstChild!, 4);
+        var fragment = range.CloneContents();
+
+        Assert.Equal("bcd", ((DomText)fragment.ChildNodes[0]).Data);
+        Assert.Equal(1, range.FragmentsCreated); // the result fragment came from the seam
+        Assert.True(range.Clones > 0);           // the character-data clone came from the seam
+    }
+
+    // ---- Non-tracking construction + host-driven removal ----------------------
+
+    private sealed class UntrackedRange(DomNode root) : DomRange(root, trackMutations: false);
+
+    [Fact]
+    public void Non_Tracking_Range_Does_Not_Self_Adjust_But_Honors_NotifyNodeRemoved()
+    {
+        var document = HtmlDocument(out var body);
+        var first = document.CreateElement("i");
+        var second = document.CreateElement("j");
+        body.AppendChild(first);
+        body.AppendChild(second);
+
+        using var range = new UntrackedRange(body);
+        range.SetStart(body, 1);
+        range.SetEnd(body, 2);
+
+        body.RemoveChild(first); // index 0 removed — a tracking range would auto-decrement
+        Assert.Equal(1, range.StartOffset); // untracked: unchanged by the raw removal
+        Assert.Equal(2, range.EndOffset);
+
+        // Host drives the DOM "removing steps" explicitly.
+        range.NotifyNodeRemoved(body, first, 0);
+        Assert.Equal(0, range.StartOffset);
+        Assert.Equal(1, range.EndOffset);
+    }
+
+    // ---- Host element-fragment (no DocumentFragment "append moves children" semantics) --------
+
+    // A range whose result fragment is a plain element rather than a DocumentFragment — as the
+    // HtmlBridge uses (its fragment is a "#document-fragment" element). Exercises the code path
+    // that must move a sub-range fragment's children individually instead of appending the
+    // fragment node itself (which for an element would nest a wrapper).
+    private sealed class ElementFragmentRange(DomNode root) : DomRange(root, trackMutations: true)
+    {
+        protected override DomNode CreateResultFragment() => Root.OwnerDocument.CreateElement("x");
+        protected override DomRange CreateSubRange(DomNode root) => new ElementFragmentRange(root);
+    }
+
+    [Fact]
+    public void Content_Operations_Move_Children_Into_A_Host_Element_Fragment()
+    {
+        var document = HtmlDocument(out var body);
+        var p1 = document.CreateElement("p");
+        var p1Text = document.CreateTextNode("hello");
+        p1.AppendChild(p1Text);
+        var mid = document.CreateElement("hr");
+        var p2 = document.CreateElement("p");
+        p2.AppendChild(document.CreateTextNode("world"));
+        body.AppendChild(p1);
+        body.AppendChild(mid);
+        body.AppendChild(p2);
+
+        using var range = new ElementFragmentRange(body);
+        range.SetStart(p1Text, 2);
+        range.SetEnd(p2.FirstChild!, 3);
+        var fragment = range.ExtractContents();
+
+        Assert.Equal("x", ((DomElement)fragment).TagName); // host element fragment, not a DocumentFragment
+        Assert.Equal(3, fragment.ChildNodes.Count);
+        var fp1 = Assert.IsType<DomElement>(fragment.ChildNodes[0]);
+        // The partial clone must hold the moved child text directly — not a nested fragment wrapper.
+        Assert.Equal("llo", ((DomText)fp1.ChildNodes[0]).Data);
+        var fp2 = Assert.IsType<DomElement>(fragment.ChildNodes[2]);
+        Assert.Equal("wor", ((DomText)fp2.ChildNodes[0]).Data);
+    }
+
+    // ---- insertNode split boundary adjustment ---------------------------------
+
+    [Fact]
+    public void InsertNode_In_Text_Keeps_Start_And_Moves_End_Into_The_Split_Node()
+    {
+        var document = HtmlDocument(out var body);
+        var text = document.CreateTextNode("12345");
+        body.AppendChild(text);
+
+        using var range = new DomRange(body);
+        range.SetStart(text, 2);
+        range.SetEnd(text, 3); // selects "3"
+
+        range.InsertNode(document.CreateElement("ins"));
+
+        // body: "12", <ins>, "345". Per the split's live-range steps, the start stays in the
+        // original (now "12") node and the end follows the split into the new "345" node.
+        Assert.Equal("12", text.Data);
+        Assert.Same(text, range.StartContainer);
+        Assert.Equal(2, range.StartOffset);
+        Assert.Equal("345", ((DomText)range.EndContainer).Data);
+        Assert.Equal(1, range.EndOffset);
+    }
 }
