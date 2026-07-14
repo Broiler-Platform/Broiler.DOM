@@ -187,8 +187,9 @@ public sealed class HtmlTokenizer
                             var afterTag = _pos + 2 + _rawTextTag.Length;
                             if (afterTag < _input.Length && (_input[afterTag] == '>' || char.IsWhiteSpace(_input[afterTag]) || _input[afterTag] == '/'))
                             {
-                                // Found the matching end tag - emit accumulated text
-                                if (_buf.Length > 0) yield return CharTok();
+                                // Found the matching end tag - emit accumulated text. Raw-text
+                                // element content (script/style) is NOT entity-decoded.
+                                if (_buf.Length > 0) yield return CharTok(decode: false);
                                 // Skip to after the '>'
                                 _pos = afterTag;
                                 while (_pos < _input.Length && _input[_pos] != '>') _pos++;
@@ -205,8 +206,8 @@ public sealed class HtmlTokenizer
                     }
                     if (_pos >= _input.Length && _state == State.RawText)
                     {
-                        // EOF in raw text - emit whatever we have
-                        if (_buf.Length > 0) yield return CharTok();
+                        // EOF in raw text - emit whatever we have (undecoded).
+                        if (_buf.Length > 0) yield return CharTok(decode: false);
                         _state = State.Data;
                     }
                 }
@@ -269,6 +270,9 @@ public sealed class HtmlTokenizer
 
     private void Flush()
     {
+        // Attribute-value character references are decoded downstream (Broiler.HTML's
+        // HtmlParser decodes them for rendering; the bridge preserves the existing
+        // behaviour), so keep the raw attribute text here to avoid a double-decode.
         if (_an != null && _an.Length > 0 && !_attrs.ContainsKey(_an))
             _attrs[_an] = _av.ToString();
         _an = null; _av.Clear();
@@ -289,11 +293,22 @@ public sealed class HtmlTokenizer
         return tok;
     }
 
-    private HtmlToken CharTok()
+    private HtmlToken CharTok(bool decode = true)
     {
-        var t = new HtmlToken(TokenType.Character, data: _buf.ToString());
-        _buf.Clear(); return t;
+        var raw = _buf.ToString();
+        _buf.Clear();
+        return new HtmlToken(TokenType.Character, data: decode ? DecodeReferences(raw) : raw);
     }
+
+    /// <summary>
+    /// Decodes HTML character references (named like <c>&amp;nbsp;</c>, decimal
+    /// <c>&amp;#160;</c>, and hex <c>&amp;#xA0;</c>) in ordinary character data (WHATWG §13.2.5
+    /// character-reference state). Raw-text element content (<c>&lt;script&gt;</c>/
+    /// <c>&lt;style&gt;</c>) is emitted undecoded — its call sites pass <c>decode: false</c>.
+    /// A fast path skips strings with no ampersand.
+    /// </summary>
+    private static string DecodeReferences(string value) =>
+        value.IndexOf('&') < 0 ? value : System.Net.WebUtility.HtmlDecode(value);
 
     private HtmlToken ComTok()
     {
