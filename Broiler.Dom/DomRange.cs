@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Text;
 
 namespace Broiler.Dom;
 
@@ -248,6 +249,47 @@ public class DomRange : IDisposable
             throw DomException.InvalidNodeType("A doctype's contents cannot be selected.");
         SetStart(node, 0);
         SetEnd(node, NodeLength(node));
+    }
+
+    /// <summary>
+    /// Returns the text the range covers — the DOM Standard §4.5 stringifier
+    /// (<c>Range.toString()</c>). It concatenates, in tree order, the selected portion of the
+    /// start Text node, the full data of every Text node fully contained in the range, and the
+    /// selected portion of the end Text node; non-Text nodes contribute nothing. A range within a
+    /// single Text node returns that node's selected substring. An empty or collapsed range, or one
+    /// whose boundaries touch only non-Text content, returns the empty string.
+    /// </summary>
+    public override string ToString()
+    {
+        // step 2: start and end are the same Text node — return the selected substring.
+        if (ReferenceEquals(_startContainer, _endContainer) && _startContainer is DomText onlyText)
+            return Slice(onlyText.Data, _startOffset, _endOffset);
+
+        var sb = new StringBuilder();
+
+        // step 3: the start node is a Text node — append from the start offset to its end.
+        if (_startContainer is DomText startText)
+            sb.Append(Slice(startText.Data, _startOffset, startText.Data.Length));
+
+        // step 4: append, in tree order, the data of every Text node fully contained in the range.
+        foreach (var node in ResolveCommonAncestor(_startContainer, _endContainer).InclusiveDescendants())
+            if (node is DomText containedText && IsContained(node))
+                sb.Append(containedText.Data);
+
+        // step 5: the end node is a Text node — append from its start to the end offset.
+        if (_endContainer is DomText endText)
+            sb.Append(Slice(endText.Data, 0, _endOffset));
+
+        return sb.ToString();
+    }
+
+    // Clamped half-open substring [from, to). The stringifier tolerates a boundary offset that a
+    // later character-data mutation may have left past the node's current data length.
+    private static string Slice(string data, int from, int to)
+    {
+        from = Math.Clamp(from, 0, data.Length);
+        to = Math.Clamp(to, from, data.Length);
+        return data.Substring(from, to - from);
     }
 
     // ---- Content operations (DOM Standard §4.5) --------------------------------

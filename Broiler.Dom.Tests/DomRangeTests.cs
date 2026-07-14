@@ -541,4 +541,91 @@ public sealed class DomRangeTests
         Assert.Equal("345", ((DomText)range.EndContainer).Data);
         Assert.Equal(1, range.EndOffset);
     }
+
+    // ---- Stringifier (DOM Standard §4.5 Range.toString()) ---------------------
+
+    [Fact]
+    public void ToString_Within_One_Text_Node_Returns_The_Selected_Substring()
+    {
+        var document = HtmlDocument(out var body);
+        var text = document.CreateTextNode("hello world");
+        body.AppendChild(text);
+
+        using var range = new DomRange(body);
+        range.SetStart(text, 2);
+        range.SetEnd(text, 7);
+
+        Assert.Equal("llo w", range.ToString());
+    }
+
+    [Fact]
+    public void ToString_Over_Element_Contents_Concatenates_Contained_Text()
+    {
+        var document = HtmlDocument(out var body);
+        var s1 = document.CreateElement("span");
+        s1.AppendChild(document.CreateTextNode("hello"));
+        var s2 = document.CreateElement("span");
+        s2.AppendChild(document.CreateTextNode("world"));
+        body.AppendChild(s1);
+        body.AppendChild(s2);
+
+        using var range = new DomRange(body);
+        range.SelectNodeContents(body);
+
+        Assert.Equal("helloworld", range.ToString());
+    }
+
+    [Fact]
+    public void ToString_Across_Text_Nodes_Includes_Start_Tail_Contained_And_End_Head()
+    {
+        // p1 "hello" / <hr> / p2 "world"; range from "he|llo" to "wor|ld".
+        var document = HtmlDocument(out var body);
+        var p1 = document.CreateElement("p");
+        var p1Text = document.CreateTextNode("hello");
+        p1.AppendChild(p1Text);
+        var mid = document.CreateElement("b");
+        mid.AppendChild(document.CreateTextNode("MID"));
+        var p2 = document.CreateElement("p");
+        var p2Text = document.CreateTextNode("world");
+        p2.AppendChild(p2Text);
+        body.AppendChild(p1);
+        body.AppendChild(mid);
+        body.AppendChild(p2);
+
+        using var range = new DomRange(body);
+        range.SetStart(p1Text, 2); // start-node tail: "llo"
+        range.SetEnd(p2Text, 3);   // end-node head: "wor"
+
+        // "llo" (start tail) + "MID" (fully-contained text) + "wor" (end head).
+        Assert.Equal("lloMIDwor", range.ToString());
+    }
+
+    [Fact]
+    public void ToString_Ignores_Non_Text_And_Partially_Contained_Nodes()
+    {
+        // A Comment is not a Text node, so a range within it stringifies to empty (per spec).
+        var document = HtmlDocument(out var body);
+        var comment = document.CreateComment("ABCDEFGHIJ");
+        body.AppendChild(comment);
+
+        using var range = new DomRange(body);
+        range.SetStart(comment, 3);
+        range.SetEnd(comment, 7);
+
+        Assert.Equal(string.Empty, range.ToString());
+    }
+
+    [Fact]
+    public void ToString_Of_Collapsed_Range_Is_Empty()
+    {
+        var document = HtmlDocument(out var body);
+        var text = document.CreateTextNode("hello");
+        body.AppendChild(text);
+
+        using var range = new DomRange(body);
+        range.SetStart(text, 2);
+        range.SetEnd(text, 2);
+
+        Assert.Equal(string.Empty, range.ToString());
+    }
 }
