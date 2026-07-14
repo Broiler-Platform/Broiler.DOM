@@ -288,6 +288,27 @@ public abstract class DomNode
         return false;
     }
 
+    /// <summary>
+    /// The nearest common inclusive ancestor of this node and <paramref name="other"/> — the deepest
+    /// node that is an inclusive ancestor of both — or <c>null</c> when they belong to different trees
+    /// (or <paramref name="other"/> is <c>null</c>). "Inclusive" means a node is its own ancestor, so
+    /// if one node is an ancestor of the other, that node is returned. Unlike
+    /// <see cref="DomRange.CommonAncestorContainer"/> (which requires two boundary points in one tree
+    /// and throws otherwise), this is a null-tolerant node-level query for arbitrary node pairs.
+    /// </summary>
+    public DomNode? CommonAncestorWith(DomNode? other)
+    {
+        if (other is null)
+            return null;
+        var ancestors = InclusiveAncestors().ToHashSet();
+        foreach (var ancestor in other.InclusiveAncestors())
+        {
+            if (ancestors.Contains(ancestor))
+                return ancestor;
+        }
+        return null;
+    }
+
     public void Normalize()
     {
         for (var index = 0; index < _children.Count;)
