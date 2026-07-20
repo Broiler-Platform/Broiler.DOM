@@ -315,11 +315,21 @@ public abstract class DomNode
         {
             if (_children[index] is DomText text)
             {
+                // DOM §4.4 "normalize": concatenate the node's contiguous exclusive Text siblings'
+                // data and set the node's data ONCE, so a characterData observer sees a single
+                // record per contiguous text run (not one per merged sibling). The following Text
+                // siblings are then removed. (Previously `text.Data += next.Data` per sibling, which
+                // published one CharacterData record for each merge step.)
+                System.Text.StringBuilder? merged = null;
                 while (index + 1 < _children.Count && _children[index + 1] is DomText next)
                 {
-                    text.Data += next.Data;
+                    merged ??= new System.Text.StringBuilder(text.Data);
+                    merged.Append(next.Data);
                     RemoveChild(next);
                 }
+
+                if (merged is not null)
+                    text.Data = merged.ToString();
 
                 if (text.Data.Length == 0)
                 {
