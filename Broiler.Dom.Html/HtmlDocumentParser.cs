@@ -88,7 +88,7 @@ public sealed class HtmlDocumentParser
                 case TokenType.Doctype:
                     if (document.DocumentType is null && !string.IsNullOrWhiteSpace(token.Name))
                     {
-                        var doctype = document.CreateDocumentType(token.Name);
+                        var doctype = document.CreateDocumentType(token.Name, token.PublicId, token.SystemId);
                         document.InsertBefore(doctype, root);
                     }
                     break;
