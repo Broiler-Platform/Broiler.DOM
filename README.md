@@ -13,9 +13,9 @@ It contains:
 ## Preview status
 
 This is first-preview software. Its API and behavior may change without compatibility
-guarantees. Substantial implementation work was AI-assisted. The component is **not
-human-approved for preview use** while [HUMAN_REVIEW.md](HUMAN_REVIEW.md) remains
-`PENDING`.
+guarantees. Substantial implementation work was AI-assisted. Human-review approval is
+revision-scoped; consult [HUMAN_REVIEW.md](HUMAN_REVIEW.md) for the reviewed revision
+and conditions before describing the current checkout as approved.
 
 Broiler.DOM is an independent Broiler component. It interoperates with Broiler.HTML,
 whose rendering lineage comes from HTML Renderer, but it must not be represented as an
@@ -28,10 +28,9 @@ official HTML Renderer component or as endorsed by that project's contributors.
 wrappers remain in HtmlBridge because they depend on computed style, layout, or the
 script runtime.
 
-The HtmlBridge `DomElement` and `HtmlTreeBuilder` surfaces are versioned as
-`htmlbridge-dom-adapter/v1`. They delegate to this component rather than owning a
-second tree or parser, and are removable only at the
-`htmlbridge-public-surface/v2` boundary.
+The current HtmlBridge pipeline consumes this canonical model directly. Bridge-owned
+JavaScript wrappers do not constitute a second DOM tree, and bridge compatibility or
+public-surface work is owned by the main Broiler repository rather than this component.
 
 ## Build and test
 
@@ -39,6 +38,11 @@ second tree or parser, and are removable only at the
 dotnet build Broiler.Dom.slnx
 dotnet test Broiler.Dom.slnx
 ```
+
+## Documentation
+
+- [Current roadmap](docs/roadmap.md) — the remaining component release gate
+- [Human-review record](HUMAN_REVIEW.md) — revision-scoped preview decision
 
 ## License
 
