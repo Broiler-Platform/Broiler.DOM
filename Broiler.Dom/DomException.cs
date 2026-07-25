@@ -19,6 +19,8 @@ public sealed class DomException : InvalidOperationException
     /// </summary>
     public string Name { get; }
 
+    internal static DomException InvalidCharacter(string message) => new("InvalidCharacterError", message);
+
     internal static DomException HierarchyRequest(string message) => new("HierarchyRequestError", message);
 
     internal static DomException NotFound(string message) => new("NotFoundError", message);

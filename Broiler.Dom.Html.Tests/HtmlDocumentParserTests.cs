@@ -21,6 +21,46 @@ public sealed class HtmlDocumentParserTests
     }
 
     [Fact]
+    public void Tokenizer_Parses_Doctype_Name_And_Public_System_Identifiers()
+    {
+        var publicToken = new HtmlTokenizer()
+            .Tokenize("<!DOCTYPE html PUBLIC \"-//W3C//DTD XHTML 1.0 Strict//EN\" " +
+                      "\"http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd\">")
+            .First(t => t.Type == TokenType.Doctype);
+        Assert.Equal("html", publicToken.Name);
+        Assert.Equal("-//W3C//DTD XHTML 1.0 Strict//EN", publicToken.PublicId);
+        Assert.Equal("http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd", publicToken.SystemId);
+
+        var systemToken = new HtmlTokenizer()
+            .Tokenize("<!DOCTYPE root SYSTEM \"about:legacy-compat\">")
+            .First(t => t.Type == TokenType.Doctype);
+        Assert.Equal("root", systemToken.Name);
+        Assert.Equal("", systemToken.PublicId);
+        Assert.Equal("about:legacy-compat", systemToken.SystemId);
+
+        // A bare doctype carries no identifiers, and the name is lowercased.
+        var bare = new HtmlTokenizer().Tokenize("<!DOCTYPE HTML>")
+            .First(t => t.Type == TokenType.Doctype);
+        Assert.Equal("html", bare.Name);
+        Assert.Equal("", bare.PublicId);
+        Assert.Equal("", bare.SystemId);
+    }
+
+    [Fact]
+    public void Document_Parser_Carries_Doctype_Identifiers_Onto_The_DocumentType_Node()
+    {
+        var result = new HtmlDocumentParser().ParseDocument(
+            "<!DOCTYPE html PUBLIC \"-//W3C//DTD HTML 4.01//EN\" " +
+            "\"http://www.w3.org/TR/html4/strict.dtd\"><html><body>x</body></html>");
+
+        var doctype = result.Document.DocumentType;
+        Assert.NotNull(doctype);
+        Assert.Equal("html", doctype!.Name);
+        Assert.Equal("-//W3C//DTD HTML 4.01//EN", doctype.PublicId);
+        Assert.Equal("http://www.w3.org/TR/html4/strict.dtd", doctype.SystemId);
+    }
+
+    [Fact]
     public void Document_Parser_Creates_Implicit_Structure_And_Table_Section()
     {
         var result = new HtmlDocumentParser().ParseDocument(

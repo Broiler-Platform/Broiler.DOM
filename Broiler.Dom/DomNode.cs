@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Linq;
+using System.Text;
 
 namespace Broiler.Dom;
 
@@ -269,6 +270,43 @@ public abstract class DomNode
         yield return this;
         foreach (var descendant in Descendants())
             yield return descendant;
+    }
+
+    /// <summary>
+    /// The node's <c>textContent</c> (DOM Standard §4.4): a character-data node's own
+    /// <see cref="DomCharacterData.Data"/>, otherwise the concatenated data of every
+    /// <see cref="DomNodeType.Text"/> descendant in tree order (comments and processing
+    /// instructions contribute nothing). Never <see langword="null"/>.
+    /// </summary>
+    /// <remarks>
+    /// Promoted from the HtmlBridge, which aggregated descendant text itself; the
+    /// traversal is pure DOM data-model logic.
+    /// </remarks>
+    public string TextContent
+    {
+        get
+        {
+            if (this is DomCharacterData characterData)
+                return characterData.Data;
+
+            var builder = new StringBuilder();
+            AppendDescendantText(this, builder);
+            return builder.ToString();
+        }
+    }
+
+    private static void AppendDescendantText(DomNode node, StringBuilder builder)
+    {
+        if (node.NodeType == DomNodeType.Text)
+        {
+            builder.Append(node is DomCharacterData data ? data.Data : node.NodeValue ?? string.Empty);
+            return;
+        }
+
+        // Snapshot for the same reason Descendants() does: a lazy consumer may mutate
+        // the child list mid-walk (WPT issue #1143).
+        foreach (var child in node._children.ToArray())
+            AppendDescendantText(child, builder);
     }
 
     public IEnumerable<DomNode> InclusiveAncestors()

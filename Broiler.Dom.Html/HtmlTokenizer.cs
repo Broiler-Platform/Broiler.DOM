@@ -22,7 +22,8 @@ public enum TokenType
 /// <summary>A single token emitted by <see cref="HtmlTokenizer"/>.</summary>
 /// <remarks>Creates a new <see cref="HtmlToken"/>.</remarks>
 public sealed class HtmlToken(TokenType type, string name = null, string data = null,
-    bool selfClosing = false, Dictionary<string, string> attributes = null)
+    bool selfClosing = false, Dictionary<string, string> attributes = null,
+    string publicId = "", string systemId = "")
 {
     /// <summary>The kind of token.</summary>
     public TokenType Type { get; } = type;
@@ -34,6 +35,10 @@ public sealed class HtmlToken(TokenType type, string name = null, string data = 
     public bool SelfClosing { get; } = selfClosing;
     /// <summary>Attribute map (keys are lower-cased).</summary>
     public Dictionary<string, string> Attributes { get; } = attributes ?? new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+    /// <summary>Doctype PUBLIC identifier (empty when absent). Only set on <see cref="TokenType.Doctype"/> tokens.</summary>
+    public string PublicId { get; } = publicId ?? "";
+    /// <summary>Doctype SYSTEM identifier (empty when absent). Only set on <see cref="TokenType.Doctype"/> tokens.</summary>
+    public string SystemId { get; } = systemId ?? "";
 }
 
 /// <summary>
@@ -248,7 +253,13 @@ public sealed class HtmlTokenizer
                 if (eof) { yield return new HtmlToken(TokenType.Doctype); yield return Eof(); yield break; }
                 else if (char.IsWhiteSpace(c)) { _pos++; }
                 else if (c == '>') { _pos++; yield return new HtmlToken(TokenType.Doctype, name: _tag.ToString()); _state = State.Data; }
-                else { ReadDoctypeName(); yield return new HtmlToken(TokenType.Doctype, name: _tag.ToString()); _state = State.Data; }
+                else
+                {
+                    ReadDoctype(out var dtPublicId, out var dtSystemId);
+                    yield return new HtmlToken(TokenType.Doctype, name: _tag.ToString(),
+                        publicId: dtPublicId, systemId: dtSystemId);
+                    _state = State.Data;
+                }
                 break;
 
             case State.BogusComment:
@@ -325,18 +336,65 @@ public sealed class HtmlTokenizer
         _pos + s.Length <= _input.Length &&
         string.Compare(_input, _pos, s, 0, s.Length, StringComparison.OrdinalIgnoreCase) == 0;
 
-    private void ReadDoctypeName()
+    // Reads a DOCTYPE's name into _tag, plus its optional PUBLIC/SYSTEM external-identifier
+    // strings (HTML Standard §13.2.5.53-70), then consumes through the closing '>'. Anything
+    // unrecognized between the identifiers and '>' is ignored, matching the prior name-only skip.
+    private void ReadDoctype(out string publicId, out string systemId)
     {
+        publicId = "";
+        systemId = "";
+
         _tag.Clear();
         while (_pos < _input.Length && _input[_pos] != '>' && !char.IsWhiteSpace(_input[_pos]))
         {
             _tag.Append(char.ToLowerInvariant(_input[_pos]));
             _pos++;
         }
+
+        SkipWhitespace();
+        if (AheadCI("PUBLIC"))
+        {
+            _pos += 6;
+            SkipWhitespace();
+            publicId = ReadDoctypeQuotedString();
+            SkipWhitespace();
+            systemId = ReadDoctypeQuotedString();
+        }
+        else if (AheadCI("SYSTEM"))
+        {
+            _pos += 6;
+            SkipWhitespace();
+            systemId = ReadDoctypeQuotedString();
+        }
+
         while (_pos < _input.Length && _input[_pos] != '>')
             _pos++;
         if (_pos < _input.Length)
             _pos++;
+    }
+
+    private void SkipWhitespace()
+    {
+        while (_pos < _input.Length && char.IsWhiteSpace(_input[_pos]))
+            _pos++;
+    }
+
+    // Reads a single- or double-quoted DOCTYPE identifier string (without the quotes).
+    // Returns "" when the next character is not a quote.
+    private string ReadDoctypeQuotedString()
+    {
+        if (_pos >= _input.Length || (_input[_pos] != '"' && _input[_pos] != '\''))
+            return "";
+
+        var quote = _input[_pos];
+        _pos++;
+        var start = _pos;
+        while (_pos < _input.Length && _input[_pos] != quote && _input[_pos] != '>')
+            _pos++;
+        var value = _input.Substring(start, _pos - start);
+        if (_pos < _input.Length && _input[_pos] == quote)
+            _pos++;
+        return value;
     }
 
     /// <summary>
