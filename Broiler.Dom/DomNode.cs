@@ -139,6 +139,112 @@ public abstract class DomNode
         return node;
     }
 
+    /// <summary>
+    /// The DOM <c>Node.moveBefore()</c> operation: moves <paramref name="node"/> into this parent
+    /// before <paramref name="referenceNode"/> <em>atomically</em>, without the
+    /// remove-then-insert pair that <see cref="InsertBefore"/> performs.
+    /// <para>
+    /// The distinction is observable. A removal disconnects the node — an <c>&lt;iframe&gt;</c>
+    /// reloads, focus is lost, animations restart, and a render-blocking element stops blocking.
+    /// A move never disconnects it: because the spec requires both parents to share a
+    /// shadow-including root, the node's connectedness cannot change, so the document's id index
+    /// stays valid and is deliberately not churned.
+    /// </para>
+    /// <para>
+    /// DIAGNOSTIC NOTE (WPT issue #1491, problem 27):
+    /// <c>dom/nodes/moveBefore/preserve-render-blocking-style.html</c> moves a render-blocking
+    /// <c>&lt;style&gt;</c> and asserts the styles survive. With no <c>moveBefore</c> at all the
+    /// script threw, the document was never styled, and the test rendered white against
+    /// Chromium's 100% green.
+    /// </para>
+    /// </summary>
+    public DomNode MoveBefore(DomNode node, DomNode? referenceNode)
+    {
+        ArgumentNullException.ThrowIfNull(node);
+
+        // Per spec: if the reference IS the node being moved, the move targets the slot after it,
+        // which makes moveBefore(n, n) a no-op rather than an error.
+        if (ReferenceEquals(referenceNode, node))
+            referenceNode = node.NextSibling;
+
+        EnsurePreMoveValidity(node, referenceNode);
+
+        var oldParent = node.ParentNode!;
+        if (ReferenceEquals(oldParent, this) && ReferenceEquals(node.NextSibling, referenceNode))
+            return node;
+
+        var document = this is DomDocument self ? self : OwnerDocument;
+
+        // Detach from the old parent's child list WITHOUT RemoveChild: that would unindex the
+        // subtree and publish a removal record, i.e. exactly the disconnection this operation
+        // exists to avoid.
+        var oldIndex = oldParent._children.IndexOf(node);
+        var oldPreviousSibling = oldIndex > 0 ? oldParent._children[oldIndex - 1] : null;
+        var oldNextSibling = oldIndex + 1 < oldParent._children.Count
+            ? oldParent._children[oldIndex + 1]
+            : null;
+        oldParent._children.RemoveAt(oldIndex);
+
+        var index = referenceNode is null ? _children.Count : _children.IndexOf(referenceNode);
+        var previousSibling = index > 0 ? _children[index - 1] : null;
+        _children.Insert(index, node);
+        node.ParentNode = this;
+
+        // No Index/UnindexConnectedSubtree pair: connectedness is invariant across a move, so the
+        // id index the two would tear down and rebuild is already correct.
+        oldParent.MarkChanged();
+        if (!ReferenceEquals(oldParent, this))
+            MarkChanged();
+
+        // Observers still see the move as a removal from the old parent and an insertion into the
+        // new one — the spec queues both records; only the disconnection is skipped.
+        document.PublishMutation(new DomMutationRecord(
+            DomMutationType.ChildList,
+            oldParent,
+            RemovedNodes: [node],
+            PreviousSibling: oldPreviousSibling,
+            NextSibling: oldNextSibling));
+        document.PublishMutation(new DomMutationRecord(
+            DomMutationType.ChildList,
+            this,
+            AddedNodes: [node],
+            PreviousSibling: previousSibling,
+            NextSibling: referenceNode));
+        return node;
+    }
+
+    /// <summary>
+    /// The DOM "ensure pre-move validity" steps. Stricter than pre-insert validity in two ways
+    /// that matter: the node must <em>already be in the tree</em> (a move has nothing to preserve
+    /// otherwise), and it must share this parent's shadow-including root — moving across roots
+    /// would change connectedness, which a move is defined never to do.
+    /// </summary>
+    private void EnsurePreMoveValidity(DomNode node, DomNode? referenceNode)
+    {
+        if (this is not (DomDocument or DomDocumentFragment or DomElement))
+            throw DomException.HierarchyRequest($"{NodeType} nodes cannot be a moveBefore parent.");
+
+        if (ReferenceEquals(node, this) || InclusiveAncestors().Contains(node))
+            throw DomException.HierarchyRequest("A node cannot be moved into itself or one of its descendants.");
+
+        // Only Element and CharacterData are movable; a fragment has no single identity to
+        // preserve, and a doctype/document cannot be repositioned this way.
+        if (node is not (DomElement or DomCharacterData))
+            throw DomException.HierarchyRequest($"{node.NodeType} nodes cannot be moved with moveBefore.");
+
+        if (node.ParentNode is null)
+            throw DomException.HierarchyRequest("The node to move must already be in the tree.");
+
+        if (referenceNode is not null && !ReferenceEquals(referenceNode.ParentNode, this))
+            throw DomException.NotFound("The reference node is not a child of this node.");
+
+        if (!ReferenceEquals(node.GetRootNode(), GetRootNode()))
+            throw DomException.HierarchyRequest("The node to move must share this node's root.");
+
+        if (this is DomDocument && node is DomText)
+            throw DomException.HierarchyRequest("Text nodes cannot be direct children of a document.");
+    }
+
     public DomNode RemoveChild(DomNode child)
     {
         ArgumentNullException.ThrowIfNull(child);
