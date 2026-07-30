@@ -173,6 +173,34 @@ public sealed class DomKernelTests
     }
 
     [Fact]
+    public void CreateElement_Keeps_A_Colon_In_The_Local_Name_Without_Throwing()
+    {
+        // Per DOM, createElement() takes a LOCAL name, so it performs no prefix
+        // splitting and no qualified-name validation — the same element-creation
+        // shape the HTML parser needs. Regression (WPT issue #1491
+        // navigation-timing/dom-interactive-media-document.html): a tag name the
+        // tokeniser legitimately produced ('n\x054͓:', from binary bytes fed
+        // to the parser as markup) threw "is not a valid qualified name" here and
+        // took down the whole page render.
+        var document = new DomDocument();
+
+        var element = document.CreateElement("x::y");
+
+        Assert.Equal("x::y", element.LocalName);
+        Assert.Equal("x::y", element.TagName);
+        Assert.Null(element.Prefix);
+        Assert.Equal(DomNamespaces.Html, element.NamespaceUri);
+
+        // Trailing and leading colons are names too, not errors.
+        Assert.Equal("n4͓:", document.CreateElement("n4͓:").LocalName);
+        Assert.Equal(":y", document.CreateElement(":y").LocalName);
+
+        // A prefixed name still splits — and still validates — via createElementNS.
+        Assert.Equal("svg", document.CreateElementNS(DomNamespaces.Svg, "svg:use").Prefix);
+        Assert.Throws<DomException>(() => document.CreateElementNS(DomNamespaces.Svg, "svg:use:"));
+    }
+
+    [Fact]
     public void Id_Index_Tracks_Connection_Mutation_And_Tree_Order()
     {
         var document = CreateHtmlDocument(out var body);

@@ -71,7 +71,18 @@ public sealed class DomDocument : DomNode
         return clone;
     }
 
-    public DomElement CreateElement(string localName) => new(this, new DomName(DomNamespaces.Html, localName.ToLowerInvariant()));
+    /// <summary>
+    /// Creates an HTML-namespace element whose local name is <paramref name="localName"/>
+    /// lowercased. Per DOM, <c>createElement</c> takes a local name, so the whole name is
+    /// kept verbatim — a ':' in it is an ordinary character, not a prefix separator, and
+    /// never an error. That is also what the HTML parser needs: its tokeniser accepts any
+    /// character but whitespace, '/' and '&gt;' in a tag name, so markup as unremarkable as
+    /// <c>&lt;x::y&gt;</c> — or a resource mistakenly fed to the parser as markup — would
+    /// otherwise throw here and take down the whole page. Prefix splitting and
+    /// namespace validation belong to <see cref="CreateElementNS"/>.
+    /// </summary>
+    public DomElement CreateElement(string localName) =>
+        new(this, DomName.CreateLocal(DomNamespaces.Html, localName.ToLowerInvariant()));
 
     public DomElement CreateElementNS(string? namespaceUri, string qualifiedName) =>
         new(this, new DomName(namespaceUri, qualifiedName));

@@ -40,14 +40,18 @@ public readonly record struct DomName
         QualifiedName = qualifiedName;
     }
 
+    // Distinguishes the non-splitting constructor below from the namespace-aware
+    // one, which has the same parameter types.
+    private enum Unsplit { Name }
+
     // Non-splitting constructor: the whole name is the local name, with no
-    // prefix or namespace processing (used by CreateLocal).
-    private DomName(string localName)
+    // prefix processing; the namespace is taken as given (used by CreateLocal).
+    private DomName(string? namespaceUri, string localName, Unsplit _)
     {
         LocalName = localName;
         QualifiedName = localName;
         Prefix = null;
-        NamespaceUri = null;
+        NamespaceUri = string.IsNullOrEmpty(namespaceUri) ? null : namespaceUri;
     }
 
     /// <summary>
@@ -59,11 +63,22 @@ public readonly record struct DomName
     /// literally "xlink:href" (no namespace) rather than throwing. The
     /// namespace-aware constructor is for <c>setAttributeNS</c>.
     /// </summary>
-    public static DomName CreateLocal(string localName)
+    public static DomName CreateLocal(string localName) => CreateLocal(null, localName);
+
+    /// <summary>
+    /// Creates a name in <paramref name="namespaceUri"/> with NO prefix processing:
+    /// the entire <paramref name="localName"/> becomes the local (and qualified) name
+    /// even if it contains a ':'. This is the shape of the DOM "create an element"
+    /// internal algorithm, which takes a local name — not a qualified one — so neither
+    /// the HTML parser nor <c>document.createElement()</c> splits off a prefix or
+    /// rejects a colon; only <c>createElementNS</c> does namespace-aware validation
+    /// (the constructor above).
+    /// </summary>
+    public static DomName CreateLocal(string? namespaceUri, string localName)
     {
         if (string.IsNullOrWhiteSpace(localName))
             throw new ArgumentException("A local name is required.", nameof(localName));
-        return new DomName(localName);
+        return new DomName(namespaceUri, localName, Unsplit.Name);
     }
 
     public string? NamespaceUri { get; }
