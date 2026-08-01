@@ -97,7 +97,31 @@ public sealed class HtmlTokenizer
             case State.Data:
                 if (eof) { if (_buf.Length > 0) yield return CharTok(); yield return Eof(); yield break; }
                 if (c == '<') { if (_buf.Length > 0) yield return CharTok(); _state = State.TagOpen; _pos++; }
-                else { _buf.Append(c); _pos++; }
+                else
+                {
+                    // Consume the whole run up to the next '<' at once. Character data used
+                    // to be appended one char at a time, so a text node cost a loop pass per
+                    // character and then two full-size buffers — the builder's copy and the
+                    // string materialised from it. Nothing is buffered in the common case, so
+                    // the run is emitted straight from the input and materialised once; the
+                    // buffered case (a '<' that turned out to be text) still needs the builder
+                    // but at least appends in one go. Token boundaries are unchanged: a run is
+                    // still only flushed at a '<' or at EOF.
+                    var next = _input.IndexOf('<', _pos);
+                    var end = next < 0 ? _input.Length : next;
+
+                    if (_buf.Length == 0)
+                    {
+                        var raw = _input.Substring(_pos, end - _pos);
+                        _pos = end;
+                        yield return new HtmlToken(TokenType.Character, data: DecodeReferences(raw));
+                    }
+                    else
+                    {
+                        _buf.Append(_input, _pos, end - _pos);
+                        _pos = end;
+                    }
+                }
                 break;
 
             case State.TagOpen:
