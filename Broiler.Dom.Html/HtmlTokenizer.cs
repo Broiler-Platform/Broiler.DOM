@@ -305,11 +305,18 @@ public sealed class HtmlTokenizer
 
     private void Flush()
     {
-        // Attribute-value character references are decoded downstream (Broiler.HTML's
-        // HtmlParser decodes them for rendering; the bridge preserves the existing
-        // behaviour), so keep the raw attribute text here to avoid a double-decode.
+        // An attribute value's character references are decoded here, in the tokenizer, exactly as
+        // character data's are (WHATWG §13.2.5, the attribute-value character-reference states) —
+        // so the DOM holds the value the attribute *means*, not the source text that spelled it.
+        //
+        // This used to leave the raw text for Broiler.HTML's HtmlParser to decode when it built
+        // boxes, which made the rendering right and everything reading the DOM wrong:
+        // `getAttribute("href")` on `href="?a=1&amp;b=2"` returned `?a=1&amp;b=2`, an
+        // `[attr="…"]` selector had to be written against the escaped spelling, and serializing
+        // re-escaped the ampersand so a DOM round-trip corrupted the value a little more each time.
+        // The downstream decode is gone with it — decoding twice would eat a level of escaping.
         if (_an != null && _an.Length > 0 && !_attrs.ContainsKey(_an))
-            _attrs[_an] = _av.ToString();
+            _attrs[_an] = DecodeReferences(_av.ToString());
         _an = null; _av.Clear();
     }
 
@@ -337,11 +344,19 @@ public sealed class HtmlTokenizer
 
     /// <summary>
     /// Decodes HTML character references (named like <c>&amp;nbsp;</c>, decimal
-    /// <c>&amp;#160;</c>, and hex <c>&amp;#xA0;</c>) in ordinary character data (WHATWG §13.2.5
-    /// character-reference state). Raw-text element content (<c>&lt;script&gt;</c>/
-    /// <c>&lt;style&gt;</c>) is emitted undecoded — its call sites pass <c>decode: false</c>.
-    /// A fast path skips strings with no ampersand.
+    /// <c>&amp;#160;</c>, and hex <c>&amp;#xA0;</c>) in ordinary character data and in attribute
+    /// values (WHATWG §13.2.5 character-reference state). Raw-text element content
+    /// (<c>&lt;script&gt;</c>/<c>&lt;style&gt;</c>) is emitted undecoded — its call sites pass
+    /// <c>decode: false</c>. A fast path skips strings with no ampersand.
     /// </summary>
+    /// <remarks>
+    /// Only a reference terminated by <c>;</c> is decoded, which is what makes this safe to share
+    /// with attribute values: the spec's ambiguous-ampersand rule exists to keep
+    /// <c>href="?a=1&amp;copy=2"</c> from turning into a <c>©</c>, and a semicolon-only decoder
+    /// never had to be told. The cost is the other half of that rule — a terminator-less
+    /// <c>title="&amp;copy"</c> stays literal where a browser would resolve it — which is the
+    /// same conservative gap this helper already had in character data.
+    /// </remarks>
     private static string DecodeReferences(string value) =>
         value.IndexOf('&') < 0 ? value : System.Net.WebUtility.HtmlDecode(value);
 
