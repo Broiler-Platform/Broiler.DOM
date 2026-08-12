@@ -17,9 +17,17 @@ public sealed record HtmlFragmentParseResult(
 /// </summary>
 public sealed class HtmlDocumentParser
 {
+    /// <remarks>
+    /// <c>frame</c> is here even though it is not one of the spec's "void elements": HTML
+    /// §"the in frameset insertion mode" inserts a <c>frame</c> element and *immediately pops it*
+    /// off the stack of open elements, so it can never take children either. Without it a
+    /// <c>&lt;frameset&gt;</c>'s second frame parsed as a child of its first, the frameset saw one
+    /// cell instead of two, and every frame after the first painted nothing —
+    /// <c>DomParser.LayoutFramesetChildren</c> lays out the cells it is given.
+    /// </remarks>
     private static readonly HashSet<string> VoidElements = new(StringComparer.OrdinalIgnoreCase)
     {
-        "area", "base", "br", "col", "embed", "hr", "img", "input",
+        "area", "base", "br", "col", "embed", "frame", "hr", "img", "input",
         "link", "meta", "param", "source", "track", "wbr"
     };
 

@@ -31,10 +31,16 @@ public sealed record HtmlSerializationOptions(
 /// <summary>Deterministic HTML serialization shared by canonical and compatibility DOM surfaces.</summary>
 public static class HtmlSerializer
 {
+    /// <remarks>
+    /// <c>frame</c> is one of the tags HTML §"HTML fragment serialisation algorithm" names
+    /// alongside the void elements as taking no end tag, and it can hold no children to close
+    /// around (see <c>HtmlDocumentParser.VoidElements</c>). Emitting <c>&lt;/frame&gt;</c> put an
+    /// end tag in the markup that re-parsing has to discard.
+    /// </remarks>
     public static readonly IReadOnlySet<string> VoidElements =
         new HashSet<string>(StringComparer.OrdinalIgnoreCase)
         {
-            "area", "base", "br", "col", "embed", "hr", "img", "input",
+            "area", "base", "br", "col", "embed", "frame", "hr", "img", "input",
             "link", "meta", "param", "source", "track", "wbr"
         };
 
