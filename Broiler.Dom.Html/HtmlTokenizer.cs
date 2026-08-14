@@ -61,10 +61,18 @@ public sealed class HtmlTokenizer
         Doctype, RawText
     }
 
-    // Raw text elements: content is treated as text until matching end tag
+    // Raw text elements: content is treated as text until the matching end tag.
+    //
+    // `noscript` is in the set because scripting is ENABLED. That is the whole condition: with
+    // scripting off a browser parses a noscript body as ordinary markup so the fallback can
+    // render, and with it on the body is raw text, which is what makes everything inside inert
+    // — a nested <script> never runs, an <img> never loads, and the DOM holds one text node
+    // rather than a subtree a page can walk into. Broiler has no scripting-disabled mode (no
+    // such flag exists anywhere), so the set is flat; if one is ever added, this is the line
+    // that has to consult it.
     private static readonly HashSet<string> RawTextElements = new(StringComparer.OrdinalIgnoreCase)
     {
-        "script", "style"
+        "script", "style", "noscript"
     };
 
     private string _rawTextTag; // tag name for raw text end tag matching
