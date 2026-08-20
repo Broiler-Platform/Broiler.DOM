@@ -1,3 +1,5 @@
+using System;
+using System.Collections.Generic;
 using System.Text;
 
 namespace Broiler.Dom.Html;
@@ -90,7 +92,7 @@ public sealed class HtmlTokenizer
     /// <summary>Tokenizes <paramref name="html"/> into a token sequence.</summary>
     public IEnumerable<HtmlToken> Tokenize(string html)
     {
-        if (html == null) throw new ArgumentNullException(nameof(html));
+        ArgumentNullException.ThrowIfNull(html);
         _input = html; _pos = 0; _state = State.Data;
         _buf.Clear(); _tag.Clear(); _av.Clear();
         _attrs = NewAttrs(); _an = null; _selfClose = _isEnd = false;
@@ -120,7 +122,7 @@ public sealed class HtmlTokenizer
 
                     if (_buf.Length == 0)
                     {
-                        var raw = _input.Substring(_pos, end - _pos);
+                        var raw = _input[_pos..end];
                         _pos = end;
                         yield return new HtmlToken(TokenType.Character, data: DecodeReferences(raw));
                     }
@@ -214,7 +216,6 @@ public sealed class HtmlTokenizer
             case State.RawText:
                 // Read all content until matching </tagname>
                 {
-                    var endTag = "</" + _rawTextTag;
                     while (_pos < _input.Length)
                     {
                         if (_input[_pos] == '<' && _pos + 1 < _input.Length && _input[_pos + 1] == '/' &&
@@ -438,7 +439,7 @@ public sealed class HtmlTokenizer
         var start = _pos;
         while (_pos < _input.Length && _input[_pos] != quote && _input[_pos] != '>')
             _pos++;
-        var value = _input.Substring(start, _pos - start);
+        var value = _input[start.._pos];
         if (_pos < _input.Length && _input[_pos] == quote)
             _pos++;
         return value;

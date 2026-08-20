@@ -1,3 +1,7 @@
+using System;
+using System.Collections.Generic;
+using System.Linq;
+
 namespace Broiler.Dom.Html;
 
 public sealed record HtmlParseDiagnostic(string Message, int? SourceOffset = null);
@@ -67,7 +71,7 @@ public sealed class HtmlDocumentParser
         "small", "strike", "strong", "tt", "u"
     };
 
-    public HtmlDocumentParseResult ParseDocument(string html, DomDocument? document = null)
+    public static HtmlDocumentParseResult ParseDocument(string html, DomDocument? document = null)
     {
         ArgumentNullException.ThrowIfNull(html);
         document ??= new DomDocument();
@@ -234,7 +238,7 @@ public sealed class HtmlDocumentParser
         return new HtmlDocumentParseResult(document, title.Trim(), diagnostics);
     }
 
-    public HtmlFragmentParseResult ParseFragment(string html, string contextTagName)
+    public static HtmlFragmentParseResult ParseFragment(string html, string contextTagName)
     {
         ArgumentNullException.ThrowIfNull(html);
         ArgumentException.ThrowIfNullOrWhiteSpace(contextTagName);

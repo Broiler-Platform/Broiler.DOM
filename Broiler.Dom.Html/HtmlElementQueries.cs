@@ -2,7 +2,6 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
-using Broiler.Dom;
 
 namespace Broiler.Dom.Html;
 
@@ -32,9 +31,9 @@ public static class HtmlElementQueries
         // 1. All tr children of thead elements (in tree order)
         foreach (var child in ChildElements(table))
         {
-            if (string.Equals(child.TagName, "thead", System.StringComparison.OrdinalIgnoreCase))
+            if (string.Equals(child.TagName, "thead", StringComparison.OrdinalIgnoreCase))
                 foreach (var c in ChildElements(child))
-                    if (string.Equals(c.TagName, "tr", System.StringComparison.OrdinalIgnoreCase))
+                    if (string.Equals(c.TagName, "tr", StringComparison.OrdinalIgnoreCase))
                         rows.Add(c);
         }
         // 2. Direct tr children of the table, or tr children of tbody elements (in tree order)
@@ -45,15 +44,15 @@ public static class HtmlElementQueries
                 rows.Add(child);
             else if (ctag == "tbody")
                 foreach (var c in ChildElements(child))
-                    if (string.Equals(c.TagName, "tr", System.StringComparison.OrdinalIgnoreCase))
+                    if (string.Equals(c.TagName, "tr", StringComparison.OrdinalIgnoreCase))
                         rows.Add(c);
         }
         // 3. All tr children of tfoot elements (in tree order)
         foreach (var child in ChildElements(table))
         {
-            if (string.Equals(child.TagName, "tfoot", System.StringComparison.OrdinalIgnoreCase))
+            if (string.Equals(child.TagName, "tfoot", StringComparison.OrdinalIgnoreCase))
                 foreach (var c in ChildElements(child))
-                    if (string.Equals(c.TagName, "tr", System.StringComparison.OrdinalIgnoreCase))
+                    if (string.Equals(c.TagName, "tr", StringComparison.OrdinalIgnoreCase))
                         rows.Add(c);
         }
         return rows;
