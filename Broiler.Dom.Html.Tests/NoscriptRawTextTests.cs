@@ -47,7 +47,7 @@ public sealed class NoscriptRawTextTests
     [Fact(Timeout = 600000)]
     public void AScriptInsideIsTextAndNotAScriptElement()
     {
-        var document = new HtmlDocumentParser()
+        var document = HtmlDocumentParser
             .ParseDocument("<html><body><noscript><script>boom()</script></noscript></body></html>")
             .Document;
 
@@ -59,7 +59,7 @@ public sealed class NoscriptRawTextTests
     [Fact(Timeout = 600000)]
     public void TheContentBecomesASingleTextChild()
     {
-        var document = new HtmlDocumentParser()
+        var document = HtmlDocumentParser
             .ParseDocument("<html><body><noscript><p>a</p><p>b</p></noscript></body></html>")
             .Document;
 
@@ -86,7 +86,7 @@ public sealed class NoscriptRawTextTests
     [Fact(Timeout = 600000)]
     public void ParsingResumesNormallyAfterTheEndTag()
     {
-        var document = new HtmlDocumentParser()
+        var document = HtmlDocumentParser
             .ParseDocument("<html><body><noscript><p>hidden</p></noscript><div id='after'>x</div></body></html>")
             .Document;
 

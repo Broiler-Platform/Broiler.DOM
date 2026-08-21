@@ -49,7 +49,7 @@ public sealed class HtmlDocumentParserTests
     [Fact(Timeout = 600000)]
     public void Document_Parser_Carries_Doctype_Identifiers_Onto_The_DocumentType_Node()
     {
-        var result = new HtmlDocumentParser().ParseDocument(
+        var result = HtmlDocumentParser.ParseDocument(
             "<!DOCTYPE html PUBLIC \"-//W3C//DTD HTML 4.01//EN\" " +
             "\"http://www.w3.org/TR/html4/strict.dtd\"><html><body>x</body></html>");
 
@@ -63,7 +63,7 @@ public sealed class HtmlDocumentParserTests
     [Fact(Timeout = 600000)]
     public void Document_Parser_Creates_Implicit_Structure_And_Table_Section()
     {
-        var result = new HtmlDocumentParser().ParseDocument(
+        var result = HtmlDocumentParser.ParseDocument(
             "<title>Shared</title><table><tr><td>cell</td></tr></table>");
 
         Assert.Equal("Shared", result.Title);
@@ -81,7 +81,7 @@ public sealed class HtmlDocumentParserTests
         // text (ubiquitous in WPT reftests: "Test passes if …") must place that
         // text in the body, not the head — otherwise it never renders and the
         // following content shifts up by a line.
-        var result = new HtmlDocumentParser().ParseDocument(
+        var result = HtmlDocumentParser.ParseDocument(
             "<style>.x{}</style>\nTest passes if no red is visible.\n<div></div>");
 
         var bodyText = result.Document.Body!.ChildNodes
@@ -100,7 +100,7 @@ public sealed class HtmlDocumentParserTests
     [Fact(Timeout = 600000)]
     public void Fragment_Parser_Uses_Context_Sensitive_Table_Rules()
     {
-        var result = new HtmlDocumentParser().ParseFragment(
+        var result = HtmlDocumentParser.ParseFragment(
             "<td id='cell'>value</td>",
             "tr");
 
@@ -112,13 +112,12 @@ public sealed class HtmlDocumentParserTests
     [Fact(Timeout = 600000)]
     public void Serialization_RoundTrip_Is_Deterministic()
     {
-        var parser = new HtmlDocumentParser();
-        var firstDocument = parser.ParseDocument(
+        var firstDocument = HtmlDocumentParser.ParseDocument(
             "<main id='host'><span class='value'>hello</span><!--note--></main>").Document;
         var first = HtmlSerializer.Serialize(
             firstDocument.DocumentElement!,
             new HtmlSerializationOptions(IncludeHtmlDoctype: true));
-        var secondDocument = parser.ParseDocument(first).Document;
+        var secondDocument = HtmlDocumentParser.ParseDocument(first).Document;
         var second = HtmlSerializer.Serialize(
             secondDocument.DocumentElement!,
             new HtmlSerializationOptions(IncludeHtmlDoctype: true));
