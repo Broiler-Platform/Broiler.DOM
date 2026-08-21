@@ -12,7 +12,7 @@ public sealed class DomTokenListTests
         return (element, new DomTokenList(element, "class"));
     }
 
-    [Fact]
+    [Fact(Timeout = 600000)]
     public void Parse_Splits_On_Ascii_Whitespace_And_Dedupes_In_Order()
     {
         var (_, tokens) = NewList("a  b\tc\nb a");
@@ -23,7 +23,7 @@ public sealed class DomTokenListTests
         Assert.Null(tokens.Item(3));
     }
 
-    [Fact]
+    [Fact(Timeout = 600000)]
     public void Contains_Reflects_Membership()
     {
         var (_, tokens) = NewList("red blue");
@@ -32,7 +32,7 @@ public sealed class DomTokenListTests
         Assert.False(tokens.Contains(""));
     }
 
-    [Fact]
+    [Fact(Timeout = 600000)]
     public void Add_Appends_New_Tokens_And_Syncs_Attribute()
     {
         var (element, tokens) = NewList("a");
@@ -41,7 +41,7 @@ public sealed class DomTokenListTests
         Assert.Equal(["a", "b", "c"], tokens.ToList());
     }
 
-    [Fact]
+    [Fact(Timeout = 600000)]
     public void Remove_Drops_Tokens_And_Syncs_Attribute()
     {
         var (element, tokens) = NewList("a b c");
@@ -63,7 +63,7 @@ public sealed class DomTokenListTests
         Assert.Equal(expectedClass, element.GetAttribute("class"));
     }
 
-    [Fact]
+    [Fact(Timeout = 600000)]
     public void Replace_Swaps_A_Present_Token_Preserving_Position()
     {
         var (element, tokens) = NewList("a b c");
@@ -71,7 +71,7 @@ public sealed class DomTokenListTests
         Assert.Equal("a x c", element.GetAttribute("class"));
     }
 
-    [Fact]
+    [Fact(Timeout = 600000)]
     public void Replace_Returns_False_When_Token_Absent()
     {
         var (element, tokens) = NewList("a b");
@@ -79,7 +79,7 @@ public sealed class DomTokenListTests
         Assert.Equal("a b", element.GetAttribute("class"));
     }
 
-    [Fact]
+    [Fact(Timeout = 600000)]
     public void Replace_Dedupes_When_New_Token_Already_Present()
     {
         var (element, tokens) = NewList("a b c");
@@ -87,7 +87,7 @@ public sealed class DomTokenListTests
         Assert.Equal("b c", element.GetAttribute("class"));
     }
 
-    [Fact]
+    [Fact(Timeout = 600000)]
     public void Value_Get_And_Set_Reflect_The_Raw_Attribute()
     {
         var (element, tokens) = NewList("a b");
@@ -109,7 +109,7 @@ public sealed class DomTokenListTests
         Assert.Throws<ArgumentException>(() => tokens.Replace("x", token));
     }
 
-    [Fact]
+    [Fact(Timeout = 600000)]
     public void No_Op_Add_Does_Not_Rewrite_The_Attribute()
     {
         var (element, tokens) = NewList("a b");

@@ -24,7 +24,7 @@ public sealed class DomMoveBeforeTests
 
     // ── Moving within one parent ──────────────────────────────────────────
 
-    [Fact]
+    [Fact(Timeout = 600000)]
     public void Moves_A_Child_Within_Its_Parent()
     {
         var document = CreateHtmlDocument(out var body);
@@ -41,7 +41,7 @@ public sealed class DomMoveBeforeTests
         Assert.Same(body, c.ParentNode);
     }
 
-    [Fact]
+    [Fact(Timeout = 600000)]
     public void Moving_Before_Null_Appends_Within_The_Same_Parent()
     {
         var document = CreateHtmlDocument(out var body);
@@ -57,7 +57,7 @@ public sealed class DomMoveBeforeTests
 
     // Per spec the reference collapses to the node's next sibling, making this a no-op
     // rather than an error.
-    [Fact]
+    [Fact(Timeout = 600000)]
     public void Moving_A_Node_Before_Itself_Is_A_No_Op()
     {
         var document = CreateHtmlDocument(out var body);
@@ -73,7 +73,7 @@ public sealed class DomMoveBeforeTests
 
     // ── Moving across parents ─────────────────────────────────────────────
 
-    [Fact]
+    [Fact(Timeout = 600000)]
     public void Moves_A_Child_Across_Parents()
     {
         var document = CreateHtmlDocument(out var body);
@@ -95,7 +95,7 @@ public sealed class DomMoveBeforeTests
 
     // The defining property: the node is never disconnected, so anything keyed off
     // connectedness (render-blocking status, iframe content, focus) survives.
-    [Fact]
+    [Fact(Timeout = 600000)]
     public void A_Moved_Node_Stays_Connected_Throughout()
     {
         var document = CreateHtmlDocument(out var body);
@@ -112,7 +112,7 @@ public sealed class DomMoveBeforeTests
         Assert.True(moved.IsConnected);
     }
 
-    [Fact]
+    [Fact(Timeout = 600000)]
     public void A_Moved_Subtree_Keeps_Its_Descendants_And_Id_Index()
     {
         var document = CreateHtmlDocument(out var body);
@@ -136,7 +136,7 @@ public sealed class DomMoveBeforeTests
 
     // The render-blocking case from the WPT test: a <style> moved across parents keeps
     // its content and stays in the document, so its rules still apply.
-    [Fact]
+    [Fact(Timeout = 600000)]
     public void A_Moved_Style_Element_Keeps_Its_Content_And_Connection()
     {
         var document = CreateHtmlDocument(out var body);
@@ -161,7 +161,7 @@ public sealed class DomMoveBeforeTests
 
     // The spec queues records for both parents: observers still see the move. Only the
     // disconnection is skipped, not the notification.
-    [Fact]
+    [Fact(Timeout = 600000)]
     public void Reports_A_Removal_And_An_Insertion_To_Observers()
     {
         var document = CreateHtmlDocument(out var body);
@@ -189,7 +189,7 @@ public sealed class DomMoveBeforeTests
 
     // A move has nothing to preserve for a node that was never in the tree; the spec
     // rejects it rather than silently behaving like insertBefore.
-    [Fact]
+    [Fact(Timeout = 600000)]
     public void Rejects_A_Node_That_Is_Not_Already_In_The_Tree()
     {
         var document = CreateHtmlDocument(out var body);
@@ -199,7 +199,7 @@ public sealed class DomMoveBeforeTests
     }
 
     // Moving across roots would change connectedness, which a move never does.
-    [Fact]
+    [Fact(Timeout = 600000)]
     public void Rejects_A_Node_From_A_Different_Root()
     {
         var document = CreateHtmlDocument(out var body);
@@ -210,7 +210,7 @@ public sealed class DomMoveBeforeTests
         Assert.Throws<DomException>(() => body.MoveBefore(node, null));
     }
 
-    [Fact]
+    [Fact(Timeout = 600000)]
     public void Rejects_A_Reference_That_Is_Not_A_Child()
     {
         var document = CreateHtmlDocument(out var body);
@@ -224,7 +224,7 @@ public sealed class DomMoveBeforeTests
         Assert.Throws<DomException>(() => target.MoveBefore(moved, stranger));
     }
 
-    [Fact]
+    [Fact(Timeout = 600000)]
     public void Rejects_Moving_A_Node_Into_Its_Own_Descendant()
     {
         var document = CreateHtmlDocument(out var body);
@@ -236,7 +236,7 @@ public sealed class DomMoveBeforeTests
         Assert.Throws<DomException>(() => inner.MoveBefore(outer, null));
     }
 
-    [Fact]
+    [Fact(Timeout = 600000)]
     public void Rejects_Unmovable_Node_Types()
     {
         var document = CreateHtmlDocument(out var body);
@@ -247,7 +247,7 @@ public sealed class DomMoveBeforeTests
         Assert.Throws<DomException>(() => body.MoveBefore(fragment, null));
     }
 
-    [Fact]
+    [Fact(Timeout = 600000)]
     public void Moves_Character_Data_Nodes()
     {
         var document = CreateHtmlDocument(out var body);

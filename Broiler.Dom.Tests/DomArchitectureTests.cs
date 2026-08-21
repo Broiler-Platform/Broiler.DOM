@@ -4,7 +4,7 @@ namespace Broiler.Dom.Tests;
 
 public sealed class DomArchitectureTests
 {
-    [Fact]
+    [Fact(Timeout = 600000)]
     public void Kernel_Has_No_NonFramework_Assembly_Dependencies()
     {
         var dependencies = typeof(DomDocument).Assembly
@@ -20,7 +20,7 @@ public sealed class DomArchitectureTests
         Assert.Empty(dependencies);
     }
 
-    [Fact]
+    [Fact(Timeout = 600000)]
     public void Public_Surface_Does_Not_Leak_Forbidden_Broiler_Types()
     {
         var leaks = typeof(DomDocument).Assembly
@@ -38,7 +38,7 @@ public sealed class DomArchitectureTests
         Assert.Empty(leaks);
     }
 
-    [Fact]
+    [Fact(Timeout = 600000)]
     public void Mutable_Collections_Are_Not_Publicly_Exposed()
     {
         var leaks = typeof(DomDocument).Assembly

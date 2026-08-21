@@ -12,7 +12,7 @@ public sealed class DomRangeTests
         return document;
     }
 
-    [Fact]
+    [Fact(Timeout = 600000)]
     public void SetStart_And_SetEnd_Expose_The_Boundary_Points()
     {
         var document = HtmlDocument(out var body);
@@ -32,7 +32,7 @@ public sealed class DomRangeTests
         Assert.False(range.Collapsed);
     }
 
-    [Fact]
+    [Fact(Timeout = 600000)]
     public void SetStart_After_End_Collapses_Onto_The_New_Start()
     {
         var document = HtmlDocument(out var body);
@@ -50,7 +50,7 @@ public sealed class DomRangeTests
         Assert.True(range.Collapsed);
     }
 
-    [Fact]
+    [Fact(Timeout = 600000)]
     public void SetEnd_Before_Start_Collapses_Onto_The_New_End()
     {
         var document = HtmlDocument(out var body);
@@ -66,7 +66,7 @@ public sealed class DomRangeTests
         Assert.True(range.Collapsed);
     }
 
-    [Fact]
+    [Fact(Timeout = 600000)]
     public void Removing_A_Subtree_Adjusts_Boundaries_Per_The_Range_Removing_Steps()
     {
         var document = HtmlDocument(out var body);
@@ -92,7 +92,7 @@ public sealed class DomRangeTests
         Assert.True(range.Collapsed);
     }
 
-    [Fact]
+    [Fact(Timeout = 600000)]
     public void Removing_An_Earlier_Sibling_Decrements_A_Following_Offset()
     {
         var document = HtmlDocument(out var body);
@@ -113,7 +113,7 @@ public sealed class DomRangeTests
 
     // ---- Selection helpers ----------------------------------------------------
 
-    [Fact]
+    [Fact(Timeout = 600000)]
     public void SelectNode_Sets_Boundaries_Around_The_Node()
     {
         var document = HtmlDocument(out var body);
@@ -131,7 +131,7 @@ public sealed class DomRangeTests
         Assert.Equal(2, range.EndOffset);
     }
 
-    [Fact]
+    [Fact(Timeout = 600000)]
     public void SelectNodeContents_Spans_All_Children()
     {
         var document = HtmlDocument(out var body);
@@ -146,7 +146,7 @@ public sealed class DomRangeTests
         Assert.Equal(2, range.EndOffset);
     }
 
-    [Fact]
+    [Fact(Timeout = 600000)]
     public void CommonAncestorContainer_Is_The_Deepest_Shared_Ancestor()
     {
         var document = HtmlDocument(out var body);
@@ -166,7 +166,7 @@ public sealed class DomRangeTests
 
     // ---- deleteContents -------------------------------------------------------
 
-    [Fact]
+    [Fact(Timeout = 600000)]
     public void DeleteContents_Within_One_Text_Node_Removes_The_Substring()
     {
         var document = HtmlDocument(out var body);
@@ -184,7 +184,7 @@ public sealed class DomRangeTests
         Assert.Equal(5, range.StartOffset);
     }
 
-    [Fact]
+    [Fact(Timeout = 600000)]
     public void DeleteContents_Removes_Whole_And_Trims_Partial_Text_Across_Nodes()
     {
         var document = HtmlDocument(out var body);
@@ -209,7 +209,7 @@ public sealed class DomRangeTests
 
     // ---- extractContents ------------------------------------------------------
 
-    [Fact]
+    [Fact(Timeout = 600000)]
     public void ExtractContents_Within_One_Text_Node_Returns_The_Substring()
     {
         var document = HtmlDocument(out var body);
@@ -227,7 +227,7 @@ public sealed class DomRangeTests
         Assert.True(range.Collapsed);
     }
 
-    [Fact]
+    [Fact(Timeout = 600000)]
     public void ExtractContents_Splits_Partial_Boundaries_And_Moves_Whole_Nodes()
     {
         var document = HtmlDocument(out var body);
@@ -270,7 +270,7 @@ public sealed class DomRangeTests
 
     // ---- cloneContents --------------------------------------------------------
 
-    [Fact]
+    [Fact(Timeout = 600000)]
     public void CloneContents_Copies_Without_Mutating_The_Tree()
     {
         var document = HtmlDocument(out var body);
@@ -294,7 +294,7 @@ public sealed class DomRangeTests
 
     // ---- insertNode -----------------------------------------------------------
 
-    [Fact]
+    [Fact(Timeout = 600000)]
     public void InsertNode_At_Element_Offset_Places_Node_And_Extends_Collapsed_Range()
     {
         var document = HtmlDocument(out var body);
@@ -317,7 +317,7 @@ public sealed class DomRangeTests
         Assert.Equal(2, range.EndOffset);
     }
 
-    [Fact]
+    [Fact(Timeout = 600000)]
     public void InsertNode_Inside_Text_Splits_The_Text_Node()
     {
         var document = HtmlDocument(out var body);
@@ -338,7 +338,7 @@ public sealed class DomRangeTests
         Assert.Equal("cd", ((DomText)body.ChildNodes[2]).Data);
     }
 
-    [Fact]
+    [Fact(Timeout = 600000)]
     public void InsertNode_Rejects_A_Comment_Start_Container()
     {
         var document = HtmlDocument(out var body);
@@ -354,7 +354,7 @@ public sealed class DomRangeTests
 
     // ---- surroundContents -----------------------------------------------------
 
-    [Fact]
+    [Fact(Timeout = 600000)]
     public void SurroundContents_Wraps_The_Selected_Content()
     {
         var document = HtmlDocument(out var body);
@@ -377,7 +377,7 @@ public sealed class DomRangeTests
         Assert.Equal("ef", ((DomText)body.ChildNodes[2]).Data);
     }
 
-    [Fact]
+    [Fact(Timeout = 600000)]
     public void SurroundContents_Throws_When_A_Non_Text_Node_Is_Partially_Selected()
     {
         var document = HtmlDocument(out var body);
@@ -394,7 +394,7 @@ public sealed class DomRangeTests
         Assert.Throws<DomException>(() => range.SurroundContents(document.CreateElement("em")));
     }
 
-    [Fact]
+    [Fact(Timeout = 600000)]
     public void SurroundContents_Throws_When_A_Comment_Boundary_Is_Partially_Selected()
     {
         // A Comment is a non-Text node; a range that starts inside one and ends elsewhere
@@ -433,7 +433,7 @@ public sealed class DomRangeTests
         protected override DomRange CreateSubRange(DomNode root) => new RecordingRange(root);
     }
 
-    [Fact]
+    [Fact(Timeout = 600000)]
     public void Content_Operations_Route_Node_Creation_Through_The_Overridable_Seams()
     {
         var document = HtmlDocument(out var body);
@@ -455,7 +455,7 @@ public sealed class DomRangeTests
 
     private sealed class UntrackedRange(DomNode root) : DomRange(root, trackMutations: false);
 
-    [Fact]
+    [Fact(Timeout = 600000)]
     public void Non_Tracking_Range_Does_Not_Self_Adjust_But_Honors_NotifyNodeRemoved()
     {
         var document = HtmlDocument(out var body);
@@ -490,7 +490,7 @@ public sealed class DomRangeTests
         protected override DomRange CreateSubRange(DomNode root) => new ElementFragmentRange(root);
     }
 
-    [Fact]
+    [Fact(Timeout = 600000)]
     public void Content_Operations_Move_Children_Into_A_Host_Element_Fragment()
     {
         var document = HtmlDocument(out var body);
@@ -520,7 +520,7 @@ public sealed class DomRangeTests
 
     // ---- insertNode split boundary adjustment ---------------------------------
 
-    [Fact]
+    [Fact(Timeout = 600000)]
     public void InsertNode_In_Text_Keeps_Start_And_Moves_End_Into_The_Split_Node()
     {
         var document = HtmlDocument(out var body);
@@ -544,7 +544,7 @@ public sealed class DomRangeTests
 
     // ---- Stringifier (DOM Standard §4.5 Range.toString()) ---------------------
 
-    [Fact]
+    [Fact(Timeout = 600000)]
     public void ToString_Within_One_Text_Node_Returns_The_Selected_Substring()
     {
         var document = HtmlDocument(out var body);
@@ -558,7 +558,7 @@ public sealed class DomRangeTests
         Assert.Equal("llo w", range.ToString());
     }
 
-    [Fact]
+    [Fact(Timeout = 600000)]
     public void ToString_Over_Element_Contents_Concatenates_Contained_Text()
     {
         var document = HtmlDocument(out var body);
@@ -575,7 +575,7 @@ public sealed class DomRangeTests
         Assert.Equal("helloworld", range.ToString());
     }
 
-    [Fact]
+    [Fact(Timeout = 600000)]
     public void ToString_Across_Text_Nodes_Includes_Start_Tail_Contained_And_End_Head()
     {
         // p1 "hello" / <hr> / p2 "world"; range from "he|llo" to "wor|ld".
@@ -600,7 +600,7 @@ public sealed class DomRangeTests
         Assert.Equal("lloMIDwor", range.ToString());
     }
 
-    [Fact]
+    [Fact(Timeout = 600000)]
     public void ToString_Ignores_Non_Text_And_Partially_Contained_Nodes()
     {
         // A Comment is not a Text node, so a range within it stringifies to empty (per spec).
@@ -615,7 +615,7 @@ public sealed class DomRangeTests
         Assert.Equal(string.Empty, range.ToString());
     }
 
-    [Fact]
+    [Fact(Timeout = 600000)]
     public void ToString_Of_Collapsed_Range_Is_Empty()
     {
         var document = HtmlDocument(out var body);

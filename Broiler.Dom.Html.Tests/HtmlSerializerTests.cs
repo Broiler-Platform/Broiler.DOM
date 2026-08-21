@@ -21,7 +21,7 @@ public sealed class HtmlSerializerTests
     public void IsRawTextElement_Matches_The_Standard_RawText_Set(string tagName, bool expected) =>
         Assert.Equal(expected, HtmlSerializer.IsRawTextElement(tagName));
 
-    [Fact]
+    [Fact(Timeout = 600000)]
     public void RawText_Element_Text_Serializes_Literally_While_Others_Escape()
     {
         var document = new DomDocument();

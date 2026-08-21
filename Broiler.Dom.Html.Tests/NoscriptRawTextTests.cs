@@ -23,7 +23,7 @@ namespace Broiler.Dom.Html.Tests;
 /// </remarks>
 public sealed class NoscriptRawTextTests
 {
-    [Fact]
+    [Fact(Timeout = 600000)]
     public void TheBodyIsOneRawTextTokenRatherThanTags()
     {
         var tokens = new HtmlTokenizer()
@@ -44,7 +44,7 @@ public sealed class NoscriptRawTextTests
 
     // The point of the change: nothing inside is live. A script here must never become a script
     // element the host can find and execute.
-    [Fact]
+    [Fact(Timeout = 600000)]
     public void AScriptInsideIsTextAndNotAScriptElement()
     {
         var document = new HtmlDocumentParser()
@@ -56,7 +56,7 @@ public sealed class NoscriptRawTextTests
             .Where(e => e.LocalName.Equals("script", System.StringComparison.OrdinalIgnoreCase)));
     }
 
-    [Fact]
+    [Fact(Timeout = 600000)]
     public void TheContentBecomesASingleTextChild()
     {
         var document = new HtmlDocumentParser()
@@ -72,7 +72,7 @@ public sealed class NoscriptRawTextTests
     }
 
     // Raw text is not entity-decoded, matching <script>/<style>.
-    [Fact]
+    [Fact(Timeout = 600000)]
     public void CharacterReferencesAreLeftUndecoded()
     {
         var tokens = new HtmlTokenizer()
@@ -83,7 +83,7 @@ public sealed class NoscriptRawTextTests
     }
 
     // Content around it keeps parsing normally once the end tag closes the raw-text run.
-    [Fact]
+    [Fact(Timeout = 600000)]
     public void ParsingResumesNormallyAfterTheEndTag()
     {
         var document = new HtmlDocumentParser()

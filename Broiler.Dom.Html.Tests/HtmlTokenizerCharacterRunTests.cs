@@ -18,26 +18,26 @@ public sealed class HtmlTokenizerCharacterRunTests
             .Select(t => t.Data)
             .ToArray();
 
-    [Fact]
+    [Fact(Timeout = 600000)]
     public void Text_Between_Tags_Is_One_Character_Token()
     {
         Assert.Equal(["hello world"], CharacterData("<p>hello world</p>"));
     }
 
-    [Fact]
+    [Fact(Timeout = 600000)]
     public void Text_Runs_Are_Split_At_Each_Tag()
     {
         Assert.Equal(["before", "inside", "after"],
             CharacterData("before<b>inside</b>after"));
     }
 
-    [Fact]
+    [Fact(Timeout = 600000)]
     public void Trailing_Text_Is_Emitted_At_End_Of_Input()
     {
         Assert.Equal(["tail"], CharacterData("<p>tail"));
     }
 
-    [Fact]
+    [Fact(Timeout = 600000)]
     public void A_Less_Than_That_Opens_No_Tag_Stays_With_The_Following_Text()
     {
         // "<" before a space is not a tag open, so it is character data and joins the run
@@ -45,25 +45,25 @@ public sealed class HtmlTokenizerCharacterRunTests
         Assert.Equal(["a ", "< b"], CharacterData("a < b"));
     }
 
-    [Fact]
+    [Fact(Timeout = 600000)]
     public void A_Trailing_Less_Than_Is_Character_Data()
     {
         Assert.Equal(["a", "<"], CharacterData("a<"));
     }
 
-    [Fact]
+    [Fact(Timeout = 600000)]
     public void Character_References_Are_Decoded_Per_Run()
     {
         Assert.Equal(["a&b", "c<d"], CharacterData("a&amp;b<i>c&lt;d"));
     }
 
-    [Fact]
+    [Fact(Timeout = 600000)]
     public void Text_Before_A_Comment_Is_Its_Own_Run()
     {
         Assert.Equal(["a", "b"], CharacterData("a<!-- c -->b"));
     }
 
-    [Fact]
+    [Fact(Timeout = 600000)]
     public void Whitespace_Only_Text_Is_Preserved_Verbatim()
     {
         // The collapsible-whitespace crashtests hand the tokenizer a single enormous

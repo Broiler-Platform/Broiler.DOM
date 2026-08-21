@@ -6,7 +6,7 @@ namespace Broiler.Dom.Html.Tests;
 
 public sealed class HtmlDocumentParserTests
 {
-    [Fact]
+    [Fact(Timeout = 600000)]
     public void Tokenizer_Provides_Stable_RawText_And_Attribute_Contract()
     {
         var tokens = new HtmlTokenizer()
@@ -20,7 +20,7 @@ public sealed class HtmlDocumentParserTests
         Assert.Equal(TokenType.EndTag, tokens[2].Type);
     }
 
-    [Fact]
+    [Fact(Timeout = 600000)]
     public void Tokenizer_Parses_Doctype_Name_And_Public_System_Identifiers()
     {
         var publicToken = new HtmlTokenizer()
@@ -46,7 +46,7 @@ public sealed class HtmlDocumentParserTests
         Assert.Equal("", bare.SystemId);
     }
 
-    [Fact]
+    [Fact(Timeout = 600000)]
     public void Document_Parser_Carries_Doctype_Identifiers_Onto_The_DocumentType_Node()
     {
         var result = new HtmlDocumentParser().ParseDocument(
@@ -60,7 +60,7 @@ public sealed class HtmlDocumentParserTests
         Assert.Equal("http://www.w3.org/TR/html4/strict.dtd", doctype.SystemId);
     }
 
-    [Fact]
+    [Fact(Timeout = 600000)]
     public void Document_Parser_Creates_Implicit_Structure_And_Table_Section()
     {
         var result = new HtmlDocumentParser().ParseDocument(
@@ -74,7 +74,7 @@ public sealed class HtmlDocumentParserTests
             result.Document.GetElementsByTagName("td").Single().FirstChild).Data);
     }
 
-    [Fact]
+    [Fact(Timeout = 600000)]
     public void Leading_Text_Without_Body_Tag_Opens_The_Body()
     {
         // A document without an explicit <body> that begins with non-whitespace
@@ -97,7 +97,7 @@ public sealed class HtmlDocumentParserTests
         Assert.DoesNotContain("Test passes", headText);
     }
 
-    [Fact]
+    [Fact(Timeout = 600000)]
     public void Fragment_Parser_Uses_Context_Sensitive_Table_Rules()
     {
         var result = new HtmlDocumentParser().ParseFragment(
@@ -109,7 +109,7 @@ public sealed class HtmlDocumentParserTests
         Assert.Equal("cell", cell.Id);
     }
 
-    [Fact]
+    [Fact(Timeout = 600000)]
     public void Serialization_RoundTrip_Is_Deterministic()
     {
         var parser = new HtmlDocumentParser();

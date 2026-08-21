@@ -2,7 +2,7 @@ namespace Broiler.Dom.Tests;
 
 public sealed class DomKernelTests
 {
-    [Fact]
+    [Fact(Timeout = 600000)]
     public void Document_Builds_A_Typed_Tree_With_ReadOnly_Children()
     {
         var document = new DomDocument();
@@ -24,7 +24,7 @@ public sealed class DomKernelTests
         Assert.False(html.ChildNodes is List<DomNode>);
     }
 
-    [Fact]
+    [Fact(Timeout = 600000)]
     public void Document_Rejects_Invalid_Hierarchy()
     {
         var document = new DomDocument();
@@ -39,7 +39,7 @@ public sealed class DomKernelTests
         Assert.Equal("HierarchyRequestError", textChild.Name);
     }
 
-    [Fact]
+    [Fact(Timeout = 600000)]
     public void InsertBefore_And_RemoveChild_Maintain_Sibling_Invariants()
     {
         var document = CreateHtmlDocument(out var body);
@@ -62,7 +62,7 @@ public sealed class DomKernelTests
         Assert.Same(first, second.PreviousSibling);
     }
 
-    [Fact]
+    [Fact(Timeout = 600000)]
     public void DocumentFragment_Is_Unpacked_And_Emptied()
     {
         var document = CreateHtmlDocument(out var body);
@@ -80,7 +80,7 @@ public sealed class DomKernelTests
         Assert.Same(body, second.ParentNode);
     }
 
-    [Fact]
+    [Fact(Timeout = 600000)]
     public void Moving_A_Node_Never_Duplicates_It()
     {
         var document = CreateHtmlDocument(out var body);
@@ -98,7 +98,7 @@ public sealed class DomKernelTests
         Assert.Same(right, child.ParentNode);
     }
 
-    [Fact]
+    [Fact(Timeout = 600000)]
     public void CrossDocument_Insert_Adopts_The_Whole_Subtree()
     {
         var source = CreateHtmlDocument(out var sourceBody);
@@ -116,7 +116,7 @@ public sealed class DomKernelTests
         Assert.Same(targetBody, section.ParentNode);
     }
 
-    [Fact]
+    [Fact(Timeout = 600000)]
     public void ImportNode_Creates_Independent_Deep_Copy()
     {
         var source = CreateHtmlDocument(out var sourceBody);
@@ -135,7 +135,7 @@ public sealed class DomKernelTests
         Assert.Equal("hello", Assert.IsType<DomText>(imported.FirstChild).Data);
     }
 
-    [Fact]
+    [Fact(Timeout = 600000)]
     public void Attributes_Are_Reflected_And_Namespace_Aware()
     {
         var document = new DomDocument();
@@ -154,7 +154,7 @@ public sealed class DomKernelTests
         Assert.Throws<DomException>(() => document.CreateElementNS(null, "svg:use"));
     }
 
-    [Fact]
+    [Fact(Timeout = 600000)]
     public void SetAttribute_Prefixed_Name_Stores_Verbatim_Without_Throwing()
     {
         // Per DOM, Element.setAttribute() performs NO namespace splitting: a
@@ -172,7 +172,7 @@ public sealed class DomKernelTests
         Assert.Null(element.GetAttributeNS("http://www.w3.org/1999/xlink", "href"));
     }
 
-    [Fact]
+    [Fact(Timeout = 600000)]
     public void CreateElement_Keeps_A_Colon_In_The_Local_Name_Without_Throwing()
     {
         // Per DOM, createElement() takes a LOCAL name, so it performs no prefix
@@ -200,7 +200,7 @@ public sealed class DomKernelTests
         Assert.Throws<DomException>(() => document.CreateElementNS(DomNamespaces.Svg, "svg:use:"));
     }
 
-    [Fact]
+    [Fact(Timeout = 600000)]
     public void Id_Index_Tracks_Connection_Mutation_And_Tree_Order()
     {
         var document = CreateHtmlDocument(out var body);
@@ -223,7 +223,7 @@ public sealed class DomKernelTests
         Assert.Same(second, document.GetElementById("renamed"));
     }
 
-    [Fact]
+    [Fact(Timeout = 600000)]
     public void Traversal_Is_Deterministic_Preorder()
     {
         var document = CreateHtmlDocument(out var body);
@@ -242,7 +242,7 @@ public sealed class DomKernelTests
             document.GetElementsByTagName("*"));
     }
 
-    [Fact]
+    [Fact(Timeout = 600000)]
     public void Normalize_Merges_Adjacent_Text_And_Removes_Empty_Text()
     {
         var document = CreateHtmlDocument(out var body);
@@ -256,7 +256,7 @@ public sealed class DomKernelTests
         Assert.Equal("hello world", text.Data);
     }
 
-    [Fact]
+    [Fact(Timeout = 600000)]
     public void Mutations_Are_Reported_With_Versioning()
     {
         var document = CreateHtmlDocument(out var body);
@@ -284,7 +284,7 @@ public sealed class DomKernelTests
         Assert.True(element.TreeVersion > 0);
     }
 
-    [Fact]
+    [Fact(Timeout = 600000)]
     public void TreeWalker_Respects_Show_Mask_And_Skip_Traversal()
     {
         var document = CreateHtmlDocument(out var body);
@@ -306,7 +306,7 @@ public sealed class DomKernelTests
         Assert.Same(body, walker.PreviousNode());
     }
 
-    [Fact]
+    [Fact(Timeout = 600000)]
     public void NodeIterator_Adjusts_After_Reference_Subtree_Removal()
     {
         var document = CreateHtmlDocument(out var body);
@@ -327,7 +327,7 @@ public sealed class DomKernelTests
         Assert.Same(second, iterator.NextNode());
     }
 
-    [Fact]
+    [Fact(Timeout = 600000)]
     public void Range_Adjusts_Boundaries_After_Subtree_Removal()
     {
         var document = CreateHtmlDocument(out var body);
@@ -351,7 +351,7 @@ public sealed class DomKernelTests
         Assert.True(range.Collapsed);
     }
 
-    [Fact]
+    [Fact(Timeout = 600000)]
     public void Descendants_Survives_Child_Mutation_Mid_Enumeration()
     {
         // Descendants() is enumerated lazily; consumers (querySelectorAll,

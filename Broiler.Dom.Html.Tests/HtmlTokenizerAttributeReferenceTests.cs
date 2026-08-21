@@ -19,7 +19,7 @@ public sealed class HtmlTokenizerAttributeReferenceTests
             .First(t => t.Type == TokenType.StartTag)
             .Attributes[name];
 
-    [Fact]
+    [Fact(Timeout = 600000)]
     public void Named_References_Are_Decoded()
     {
         Assert.Equal("a\"b", Attribute("""<i x="a&quot;b">"""));
@@ -27,13 +27,13 @@ public sealed class HtmlTokenizerAttributeReferenceTests
         Assert.Equal("a<b>c", Attribute("""<i x="a&lt;b&gt;c">"""));
     }
 
-    [Fact]
+    [Fact(Timeout = 600000)]
     public void Numeric_And_Hexadecimal_References_Are_Decoded()
     {
         Assert.Equal("AB", Attribute("""<i x="&#65;&#x42;">"""));
     }
 
-    [Fact]
+    [Fact(Timeout = 600000)]
     public void A_NonBreaking_Space_Is_Decoded_To_Its_Character()
     {
         Assert.Equal("a b", Attribute("""<i x="a&nbsp;b">"""));
@@ -41,7 +41,7 @@ public sealed class HtmlTokenizerAttributeReferenceTests
 
     /// <summary>The shape the bug was found through: a query string's escaped separator is an
     /// ampersand, so the URL the DOM reports is the URL the page meant.</summary>
-    [Fact]
+    [Fact(Timeout = 600000)]
     public void An_Escaped_Query_Separator_Decodes_To_An_Ampersand()
     {
         Assert.Equal("?a=1&b=2", Attribute("""<a x="?a=1&amp;b=2">"""));
@@ -51,7 +51,7 @@ public sealed class HtmlTokenizerAttributeReferenceTests
     /// One level of escaping, not two: <c>&amp;amp;amp;</c> is the spelling of a literal
     /// <c>&amp;amp;</c>. This is what the removed downstream decode used to eat.
     /// </summary>
-    [Fact]
+    [Fact(Timeout = 600000)]
     public void Only_One_Level_Of_Escaping_Is_Removed()
     {
         Assert.Equal("&amp;", Attribute("""<i x="&amp;amp;">"""));
@@ -62,7 +62,7 @@ public sealed class HtmlTokenizerAttributeReferenceTests
     /// <c>&amp;copy=2</c> from becoming a <c>©</c> — the spec's ambiguous-ampersand rule — at the
     /// cost of its other half, a terminator-less <c>&amp;copy</c> that a browser would resolve.
     /// </summary>
-    [Fact]
+    [Fact(Timeout = 600000)]
     public void An_Unterminated_Reference_Is_Left_Literal()
     {
         Assert.Equal("?a=1&copy=2", Attribute("""<a x="?a=1&copy=2">"""));
@@ -70,14 +70,14 @@ public sealed class HtmlTokenizerAttributeReferenceTests
 
     /// <summary>Quoting does not change what a value means: an unquoted attribute decodes too.
     /// </summary>
-    [Fact]
+    [Fact(Timeout = 600000)]
     public void An_Unquoted_Value_Is_Decoded()
     {
         Assert.Equal("a&b", Attribute("<i x=a&amp;b>"));
     }
 
     /// <summary>A value with no reference in it is returned unchanged.</summary>
-    [Fact]
+    [Fact(Timeout = 600000)]
     public void A_Value_With_No_Reference_Is_Untouched()
     {
         Assert.Equal("plain value", Attribute("""<i x="plain value">"""));

@@ -14,7 +14,7 @@ public sealed class DomMutationObserverFilterTests
         return (root, child, grandchild);
     }
 
-    [Fact]
+    [Fact(Timeout = 600000)]
     public void Type_Flag_Gates_Delivery()
     {
         var (root, _, _) = Tree();
@@ -24,7 +24,7 @@ public sealed class DomMutationObserverFilterTests
         Assert.False(DomMutationObserverFilter.Matches(childListRecord, root, new DomMutationObserverOptions { Attributes = true }));
     }
 
-    [Fact]
+    [Fact(Timeout = 600000)]
     public void Attributes_And_CharacterData_Types_Are_Gated_By_Their_Flags()
     {
         var (root, _, _) = Tree();
@@ -36,7 +36,7 @@ public sealed class DomMutationObserverFilterTests
         Assert.True(DomMutationObserverFilter.Matches(cdata, root, new DomMutationObserverOptions { CharacterData = true }));
     }
 
-    [Fact]
+    [Fact(Timeout = 600000)]
     public void Without_Subtree_Only_The_Observed_Node_Matches()
     {
         var (root, child, _) = Tree();
@@ -47,7 +47,7 @@ public sealed class DomMutationObserverFilterTests
         Assert.False(DomMutationObserverFilter.Matches(record, root, options));   // ancestor without subtree
     }
 
-    [Fact]
+    [Fact(Timeout = 600000)]
     public void Subtree_Extends_Matching_To_Ancestors_Of_The_Target()
     {
         var (root, child, grandchild) = Tree();
@@ -59,7 +59,7 @@ public sealed class DomMutationObserverFilterTests
         Assert.True(DomMutationObserverFilter.Matches(record, grandchild, options)); // self
     }
 
-    [Fact]
+    [Fact(Timeout = 600000)]
     public void A_Sibling_Or_Unrelated_Node_Never_Matches()
     {
         var document = new DomDocument();
@@ -87,7 +87,7 @@ public sealed class DomMutationObserverFilterTests
         Assert.Equal(expected, DomMutationObserverFilter.Matches(record, root, options));
     }
 
-    [Fact]
+    [Fact(Timeout = 600000)]
     public void CapturesOldValue_Follows_The_OldValue_Flags()
     {
         var (root, _, _) = Tree();
