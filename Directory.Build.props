@@ -11,4 +11,14 @@
   <!-- Broiler NuGet packaging metadata (vendored; do not edit by hand). -->
   <Import Project="$(MSBuildThisFileDirectory)eng\Broiler.Packaging.props" />
 
+  <!-- Component-owned overrides. These are evaluated AFTER the import above and
+       therefore win, which is the extension point the vendored file documents.
+       The shared default points at the organisation; a published package should
+       link to the component's own repository instead. This also settles the
+       value when Broiler.DOM is checked out INSIDE another component, where the
+       chain above has already seen that component's own project URL. -->
+  <PropertyGroup>
+    <PackageProjectUrl>https://github.com/Broiler-Platform/Broiler.DOM</PackageProjectUrl>
+  </PropertyGroup>
+
 </Project>
