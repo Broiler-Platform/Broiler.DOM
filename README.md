@@ -10,6 +10,29 @@ It contains:
 - `Broiler.Dom.Html`: HTML tokenization, document and fragment parsing, tree building,
   and serialization.
 
+## Standards and rights
+
+Both bodies that have stewarded the DOM and HTML — the WHATWG and the W3C —
+operate **royalty-free** patent policies. Both bind participants over Essential
+Claims and both let a participant exclude specific patents during a disclosure
+window, so neither is a statement that no relevant claim exists.
+
+That, and what this repository does and does not contain, is recorded in
+[the DOM IP and licensing register](docs/dom-ip-licensing-register.md). **Read it
+before relying on anything here: every row is pending a decision.** No lawyer has
+reviewed it, patent-freedom is not claimed, and no freedom-to-operate
+determination has been made.
+
+One finding is worth repeating outside the register. The HTML Standard's named
+character reference table — roughly 2,231 entries, and the largest thing an HTML
+parser might copy — **is not in this repository**. Two call sites hand the work to
+`System.Net.WebUtility`, and a guard test fails the build if a transcribed table
+ever appears. Neither library takes a package reference, no third-party
+conformance suite is committed, and no specification text is reproduced.
+
+This component is a tokenizer, a tree builder and a serializer. **It is not a
+browser engine** and nothing here may describe it as one, or as HTML5-conformant.
+
 ## Preview status
 
 This is first-preview software. Its API and behavior may change without compatibility
