@@ -358,3 +358,29 @@ and architecture suites and confirm that:
 - `Broiler.Dom` remains free of non-BCL project dependencies;
 - `Broiler.Dom.Html` remains the only HTML parse/serialize owner; and
 - the main Broiler pipeline still uses one canonical mutable document.
+
+## Rights and claims
+
+This component has a rights record:
+[the DOM IP and licensing register](dom-ip-licensing-register.md). It exists
+because `Broiler.Documents`' HTML register explicitly could not cover the parsing
+half of HTML, which lives here rather than there.
+
+**Every row is pending a decision.** The evidence is assembled and primary-sourced;
+approving it is the project reviewer's.
+
+- The patent position rests on two independent royalty-free policies, which is
+  the strongest starting point of any format the platform reads — and it is a
+  commitment mechanism rather than a finding that no claim exists, because both
+  policies let a participant exclude patents during a disclosure window.
+- The question the register was opened for has a clean answer: the named
+  character reference table is the platform's, not this repository's, and
+  `DomClaimGuardTests` fails the build if that changes.
+- Worth carrying to any future register: WHATWG publishes its standards under
+  CC BY 4.0, and BSD-3 where text is incorporated into source. The transcription
+  question that gates the PDF fax decoder under SRC-017 has a published answer
+  for HTML. This component does not need it, and knowing it exists is worth more
+  than the row it closes.
+- The governance discipline is stated in a repository that depends on this one
+  (`Broiler.Documents` ADR 0013), which is backwards. If the platform ever wants
+  one governance document it belongs above both.
