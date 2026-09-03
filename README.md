@@ -26,10 +26,12 @@ Claims and both let a participant exclude specific patents during a disclosure
 window, so neither is a statement that no relevant claim exists.
 
 That, and what this repository does and does not contain, is recorded in
-[the DOM IP and licensing register](docs/dom-ip-licensing-register.md). **Read it
-before relying on anything here: every row is pending a decision.** No lawyer has
-reviewed it, patent-freedom is not claimed, and no freedom-to-operate
-determination has been made.
+[the DOM IP and licensing register](docs/dom-ip-licensing-register.md), where
+**every row is now decided**. Decided is not cleared: no lawyer reviewed it,
+patent-freedom is not claimed, and no freedom-to-operate determination has been
+made. Both patent policies let a participant exclude patents during a disclosure
+window, which is what keeps a royalty-free commitment from being a finding that
+no claim exists.
 
 One finding is worth repeating outside the register. The HTML Standard's named
 character reference table — roughly 2,231 entries, and the largest thing an HTML

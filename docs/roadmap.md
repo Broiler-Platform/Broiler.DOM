@@ -366,8 +366,9 @@ This component has a rights record:
 because `Broiler.Documents`' HTML register explicitly could not cover the parsing
 half of HTML, which lives here rather than there.
 
-**Every row is pending a decision.** The evidence is assembled and primary-sourced;
-approving it is the project reviewer's.
+**Every row is decided** as of 2026-09-03. Decided is not cleared, and the
+distinction is the point: no legal review, no patent-freedom claim, no
+freedom-to-operate determination.
 
 - The patent position rests on two independent royalty-free policies, which is
   the strongest starting point of any format the platform reads — and it is a
