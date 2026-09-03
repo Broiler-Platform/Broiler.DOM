@@ -180,9 +180,15 @@ public sealed class DomMoveBeforeTests
         Assert.Equal(2, records.Count);
         Assert.All(records, record => Assert.Equal(DomMutationType.ChildList, record.Type));
         Assert.Same(source, records[0].Target);
-        Assert.Same(moved, Assert.Single(records[0].RemovedNodes));
+        // Asserted through IsAssignableFrom rather than a null-forgiving operator:
+        // both collections are nullable on the record, and a test that suppressed
+        // the warning would report a null list as a NullReferenceException instead
+        // of as the assertion it actually is.
+        Assert.Same(moved, Assert.Single(
+            Assert.IsAssignableFrom<IReadOnlyList<DomNode>>(records[0].RemovedNodes)));
         Assert.Same(target, records[1].Target);
-        Assert.Same(moved, Assert.Single(records[1].AddedNodes));
+        Assert.Same(moved, Assert.Single(
+            Assert.IsAssignableFrom<IReadOnlyList<DomNode>>(records[1].AddedNodes)));
     }
 
     // ── Pre-move validity ─────────────────────────────────────────────────
