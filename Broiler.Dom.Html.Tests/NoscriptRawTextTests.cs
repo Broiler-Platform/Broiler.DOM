@@ -51,9 +51,9 @@ public sealed class NoscriptRawTextTests
             .ParseDocument("<html><body><noscript><script>boom()</script></noscript></body></html>")
             .Document;
 
-        Assert.Empty(document.DocumentElement.Descendants()
-            .OfType<DomElement>()
-            .Where(e => e.LocalName.Equals("script", System.StringComparison.OrdinalIgnoreCase)));
+        Assert.DoesNotContain(
+            document.DocumentElement.Descendants().OfType<DomElement>(),
+            e => e.LocalName.Equals("script", System.StringComparison.OrdinalIgnoreCase));
     }
 
     [Fact(Timeout = 600000)]
