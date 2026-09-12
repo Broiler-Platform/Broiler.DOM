@@ -29,11 +29,7 @@ public sealed class HtmlDocumentParser
     /// cell instead of two, and every frame after the first painted nothing —
     /// <c>DomParser.LayoutFramesetChildren</c> lays out the cells it is given.
     /// </remarks>
-    private static readonly HashSet<string> VoidElements = new(StringComparer.OrdinalIgnoreCase)
-    {
-        "area", "base", "br", "col", "embed", "frame", "hr", "img", "input",
-        "link", "meta", "param", "source", "track", "wbr"
-    };
+    private static readonly IReadOnlySet<string> VoidElements = HtmlElementNames.VoidElements;
 
     private static readonly HashSet<string> StructuralTags = new(StringComparer.OrdinalIgnoreCase)
     {
@@ -65,12 +61,6 @@ public sealed class HtmlDocumentParser
         "td", "th", "style", "script", "template"
     };
 
-    private static readonly HashSet<string> FormattingElements = new(StringComparer.OrdinalIgnoreCase)
-    {
-        "a", "b", "big", "code", "em", "font", "i", "nobr", "s",
-        "small", "strike", "strong", "tt", "u"
-    };
-
     public static HtmlDocumentParseResult ParseDocument(string html, DomDocument? document = null)
     {
         ArgumentNullException.ThrowIfNull(html);
@@ -87,7 +77,6 @@ public sealed class HtmlDocumentParser
 
         var openElements = new Stack<DomElement>();
         openElements.Push(body);
-        var activeFormatting = new List<DomElement>();
         var diagnostics = new List<HtmlParseDiagnostic>();
         var title = string.Empty;
         var inTitle = false;
@@ -107,7 +96,7 @@ public sealed class HtmlDocumentParser
 
                 case TokenType.StartTag:
                 {
-                    var tag = token.Name;
+                    var tag = token.Name ?? string.Empty;
                     if (string.IsNullOrEmpty(tag))
                         break;
 
@@ -159,17 +148,13 @@ public sealed class HtmlDocumentParser
 
                     parent.AppendChild(element);
                     if (!VoidElements.Contains(tag) && !token.SelfClosing)
-                    {
                         openElements.Push(element);
-                        if (FormattingElements.Contains(tag))
-                            activeFormatting.Add(element);
-                    }
                     break;
                 }
 
                 case TokenType.EndTag:
                 {
-                    var tag = token.Name;
+                    var tag = token.Name ?? string.Empty;
                     if (tag.Equals("title", StringComparison.OrdinalIgnoreCase))
                     {
                         inTitle = false;
@@ -184,10 +169,7 @@ public sealed class HtmlDocumentParser
                     if (StructuralTags.Contains(tag) || VoidElements.Contains(tag))
                         break;
 
-                    if (FormattingElements.Contains(tag))
-                        RunAdoptionAgency(openElements, activeFormatting, tag);
-                    else
-                        PopToTag(openElements, tag);
+                    PopToTag(openElements, tag);
                     break;
                 }
 
@@ -256,7 +238,7 @@ public sealed class HtmlDocumentParser
 
     private static DomElement CreateElement(DomDocument document, HtmlToken token)
     {
-        var element = document.CreateElement(token.Name);
+        var element = document.CreateElement(token.Name ?? throw new InvalidOperationException("A start tag must have a name."));
         CopyAttributes(element, token);
         return element;
     }
@@ -303,20 +285,6 @@ public sealed class HtmlDocumentParser
                 return element.ParentNode as DomElement ?? body;
         }
         return body;
-    }
-
-    private static void RunAdoptionAgency(
-        Stack<DomElement> openElements,
-        List<DomElement> activeFormatting,
-        string tag)
-    {
-        while (openElements.Count > 1)
-        {
-            var popped = openElements.Pop();
-            activeFormatting.Remove(popped);
-            if (popped.LocalName.Equals(tag, StringComparison.OrdinalIgnoreCase))
-                return;
-        }
     }
 
     private static DomElement? FindContextElement(DomDocument document, string contextTagName) =>

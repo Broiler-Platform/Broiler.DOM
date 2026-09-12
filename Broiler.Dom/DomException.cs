@@ -32,4 +32,6 @@ public sealed class DomException : InvalidOperationException
     internal static DomException InvalidState(string message) => new("InvalidStateError", message);
 
     internal static DomException InvalidNodeType(string message) => new("InvalidNodeTypeError", message);
+
+    internal static DomException IndexSize(string message) => new("IndexSizeError", message);
 }

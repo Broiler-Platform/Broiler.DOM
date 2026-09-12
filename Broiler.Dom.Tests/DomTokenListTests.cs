@@ -2,6 +2,17 @@ namespace Broiler.Dom.Tests;
 
 public sealed class DomTokenListTests
 {
+    [Theory]
+    [InlineData("a b", "a", true, "a b")]
+    [InlineData("a b", "missing", false, "a b")]
+    [InlineData("a  b a", "a", true, "a b")]
+    public void Replace_With_Itself_Preserves_Membership(string initial, string token, bool expected, string value)
+    {
+        var (_, tokens) = NewList(initial);
+        Assert.Equal(expected, tokens.Replace(token, token));
+        Assert.Equal(value, tokens.Value);
+    }
+
     private static (DomElement Element, DomTokenList Tokens) NewList(string? initial = null)
     {
         var document = new DomDocument();

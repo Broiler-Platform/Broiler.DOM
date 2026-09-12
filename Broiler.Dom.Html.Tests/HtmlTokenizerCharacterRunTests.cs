@@ -15,7 +15,7 @@ public sealed class HtmlTokenizerCharacterRunTests
     private static string[] CharacterData(string html) =>
         new HtmlTokenizer().Tokenize(html)
             .Where(t => t.Type == TokenType.Character)
-            .Select(t => t.Data)
+            .Select(t => Assert.IsType<string>(t.Data))
             .ToArray();
 
     [Fact(Timeout = 600000)]

@@ -50,6 +50,9 @@ public abstract class DomNode
             return child;
 
         var reference = child.NextSibling;
+        if (ReferenceEquals(reference, node))
+            reference = node.NextSibling;
+        EnsurePreInsertValidity(node, reference, child);
         RemoveChild(child);
         InsertBefore(node, reference);
         return child;
@@ -101,7 +104,6 @@ public abstract class DomNode
         if (ReferenceEquals(node, referenceNode))
             return node;
 
-        EnsureCanHaveChildren();
         EnsurePreInsertValidity(node, referenceNode);
 
         if (node is DomDocumentFragment fragment)
@@ -511,8 +513,10 @@ public abstract class DomNode
             throw DomException.HierarchyRequest($"{NodeType} nodes cannot have children.");
     }
 
-    private void EnsurePreInsertValidity(DomNode node, DomNode? referenceNode)
+    internal void EnsurePreInsertValidity(DomNode node, DomNode? referenceNode, DomNode? replacedChild = null)
     {
+        EnsureCanHaveChildren();
+
         if (ReferenceEquals(node, this) || InclusiveAncestors().Contains(node))
             throw DomException.HierarchyRequest("A node cannot be inserted into itself or one of its descendants.");
 
@@ -522,6 +526,9 @@ public abstract class DomNode
         if (this is not DomDocument document)
             return;
 
+        if (ReferenceEquals(referenceNode, node))
+            referenceNode = node.NextSibling;
+
         var candidates = node is DomDocumentFragment
             ? node.ChildNodes
             : [node];
@@ -529,39 +536,22 @@ public abstract class DomNode
         if (candidates.Any(static candidate => candidate is DomText))
             throw DomException.HierarchyRequest("Text nodes cannot be direct children of a document.");
 
-        if (candidates.Count(static candidate => candidate is DomElement) > 1 ||
-            candidates.Count(static candidate => candidate is DomDocumentType) > 1)
-        {
+        // Validate the resulting child order before removal, adoption, or notifications.
+        // Exclude both a moved node and a replaced child when checking document uniqueness.
+        var children = document._children
+            .Where(child => !ReferenceEquals(child, node) && !ReferenceEquals(child, replacedChild))
+            .ToList();
+        var insertionIndex = referenceNode is null ? children.Count : children.IndexOf(referenceNode);
+        children.InsertRange(insertionIndex, candidates);
+
+        if (children.Count(static child => child is DomElement) > 1 ||
+            children.Count(static child => child is DomDocumentType) > 1)
             throw DomException.HierarchyRequest("A document can contain only one element and one document type.");
-        }
 
-        var replacedOrMoved = ReferenceEquals(node.ParentNode, document) ? node : null;
-        var existingElement = document._children
-            .FirstOrDefault(child => child is DomElement && !ReferenceEquals(child, replacedOrMoved));
-        var existingDoctype = document._children
-            .FirstOrDefault(child => child is DomDocumentType && !ReferenceEquals(child, replacedOrMoved));
-
-        if (existingElement is not null && candidates.Any(static candidate => candidate is DomElement))
-            throw DomException.HierarchyRequest("The document already has a document element.");
-
-        if (existingDoctype is not null && candidates.Any(static candidate => candidate is DomDocumentType))
-            throw DomException.HierarchyRequest("The document already has a document type.");
-
-        if (candidates.Any(static candidate => candidate is DomDocumentType))
-        {
-            var elementIndex = document._children.FindIndex(static child => child is DomElement);
-            var insertionIndex = referenceNode is null ? document._children.Count : document._children.IndexOf(referenceNode);
-            if (elementIndex >= 0 && insertionIndex > elementIndex)
-                throw DomException.HierarchyRequest("A document type must precede the document element.");
-        }
-
-        if (candidates.Any(static candidate => candidate is DomElement))
-        {
-            var doctypeIndex = document._children.FindIndex(static child => child is DomDocumentType);
-            var insertionIndex = referenceNode is null ? document._children.Count : document._children.IndexOf(referenceNode);
-            if (doctypeIndex >= 0 && insertionIndex <= doctypeIndex)
-                throw DomException.HierarchyRequest("The document element must follow the document type.");
-        }
+        var elementIndex = children.FindIndex(static child => child is DomElement);
+        var doctypeIndex = children.FindIndex(static child => child is DomDocumentType);
+        if (elementIndex >= 0 && doctypeIndex > elementIndex)
+            throw DomException.HierarchyRequest("A document type must precede the document element.");
     }
 
 }

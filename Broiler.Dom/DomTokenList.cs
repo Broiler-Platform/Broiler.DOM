@@ -135,6 +135,12 @@ public sealed class DomTokenList
         if (index < 0)
             return false;
 
+        if (string.Equals(token, newToken, StringComparison.Ordinal))
+        {
+            Update(set);
+            return true;
+        }
+
         if (set.Contains(newToken))
             set.RemoveAt(index); // newToken already present — drop the old slot to de-duplicate
         else

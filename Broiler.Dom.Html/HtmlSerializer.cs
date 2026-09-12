@@ -41,11 +41,7 @@ public static class HtmlSerializer
     /// end tag in the markup that re-parsing has to discard.
     /// </remarks>
     public static readonly IReadOnlySet<string> VoidElements =
-        new HashSet<string>(StringComparer.OrdinalIgnoreCase)
-        {
-            "area", "base", "br", "col", "embed", "frame", "hr", "img", "input",
-            "link", "meta", "param", "source", "track", "wbr"
-        };
+        HtmlElementNames.VoidElements;
 
     /// <summary>
     /// HTML elements whose character-data children serialize literally (not
@@ -111,11 +107,12 @@ public static class HtmlSerializer
     // text.html) would otherwise overflow the stack. Depth is still tracked so a
     // runaway/cyclic structure is bounded by MaximumDepth instead of exhausting
     // memory.
-    private readonly struct PendingNode<TNode>(TNode node, string? closing, int depth)
+    private readonly struct PendingNode<TNode>(TNode node, string? closing, int depth, bool rawText = false)
     {
         public readonly TNode Node = node;
         public readonly string? Closing = closing;
         public readonly int Depth = depth;
+        public readonly bool RawText = rawText;
     }
 
     private static void Append<TNode>(
@@ -146,7 +143,7 @@ public static class HtmlSerializer
             if (kind == HtmlSerializationNodeKind.Text)
             {
                 var textData = adapter.GetText(node) ?? string.Empty;
-                builder.Append(options.EncodeTextNodes ? Encode(textData) : textData);
+                builder.Append(options.EncodeTextNodes && !pending.RawText ? Encode(textData) : textData);
                 continue;
             }
 
@@ -197,8 +194,7 @@ public static class HtmlSerializer
                 // Defer the close tag until after every child is written, then
                 // push the children so they pop (and serialize) in document order.
                 stack.Push(new PendingNode<TNode>(default!, $"</{tagName}>", nodeDepth));
-                for (var index = children.Length - 1; index >= 0; index--)
-                    stack.Push(new PendingNode<TNode>(children[index], null, nodeDepth + 1));
+                PushChildren(stack, children, nodeDepth + 1, IsRawTextElement(tagName));
                 continue;
             }
 
@@ -218,12 +214,13 @@ public static class HtmlSerializer
     private static void PushChildren<TNode>(
         Stack<PendingNode<TNode>> stack,
         IEnumerable<TNode> children,
-        int depth)
+        int depth,
+        bool rawText = false)
     {
         // Reverse so the first child pops first (document order).
         var buffer = children as IReadOnlyList<TNode> ?? children.ToArray();
         for (var index = buffer.Count - 1; index >= 0; index--)
-            stack.Push(new PendingNode<TNode>(buffer[index], null, depth));
+            stack.Push(new PendingNode<TNode>(buffer[index], null, depth, rawText));
     }
 
     private static readonly HtmlSerializationAdapter<DomNode> CanonicalAdapter = new(

@@ -2,6 +2,94 @@ namespace Broiler.Dom.Tests;
 
 public sealed class DomRangeTests
 {
+    [Theory]
+    [InlineData("element", -1)]
+    [InlineData("element", 2)]
+    [InlineData("text", -1)]
+    [InlineData("text", 4)]
+    [InlineData("comment", 4)]
+    public void Invalid_Boundaries_Are_Rejected_Before_Changing_The_Range(string kind, int offset)
+    {
+        var document = HtmlDocument(out var body);
+        var text = document.CreateTextNode("abc");
+        body.AppendChild(text);
+        DomNode container = kind switch
+        {
+            "text" => text,
+            "comment" => document.CreateComment("abc"),
+            _ => body
+        };
+        using var range = new DomRange(body);
+        range.SelectNodeContents(text);
+
+        Assert.Equal("IndexSizeError", Assert.Throws<DomException>(() => range.SetStart(container, offset)).Name);
+        Assert.Equal("IndexSizeError", Assert.Throws<DomException>(() => range.SetEnd(container, offset)).Name);
+
+        Assert.Same(text, range.StartContainer);
+        Assert.Same(text, range.EndContainer);
+        Assert.Equal(0, range.StartOffset);
+        Assert.Equal(3, range.EndOffset);
+        Assert.Equal("abc", range.ToString());
+    }
+
+    [Fact]
+    public void Doctype_Cannot_Be_A_Boundary_Container()
+    {
+        var document = new DomDocument();
+        var doctype = document.CreateDocumentType("html");
+        using var range = new DomRange(document);
+        Assert.Equal("InvalidNodeTypeError", Assert.Throws<DomException>(() => range.SetStart(doctype, 0)).Name);
+        Assert.Equal("InvalidNodeTypeError", Assert.Throws<DomException>(() => range.SetEnd(doctype, 0)).Name);
+        Assert.Same(document, range.StartContainer);
+        Assert.Same(document, range.EndContainer);
+    }
+
+    [Fact]
+    public void Rejected_Insert_Does_Not_Split_The_Text_Boundary()
+    {
+        var document = HtmlDocument(out var body);
+        var text = document.CreateTextNode("abc");
+        body.AppendChild(text);
+        using var range = new DomRange(body);
+        range.SetStart(text, 1);
+        var version = document.Version;
+
+        Assert.Throws<DomException>(() => range.InsertNode(document));
+
+        Assert.Same(text, Assert.Single(body.ChildNodes));
+        Assert.Equal("abc", text.Data);
+        Assert.Equal(version, document.Version);
+        Assert.Equal(1, range.StartOffset);
+        Assert.True(range.Collapsed);
+    }
+
+    [Fact]
+    public void CloneContents_Preserves_Partial_Ancestor_Structure_And_The_Original_Tree()
+    {
+        var document = HtmlDocument(out var body);
+        var first = document.CreateElement("p");
+        var last = document.CreateElement("p");
+        var startText = document.CreateTextNode("hello");
+        var endText = document.CreateTextNode("world");
+        first.AppendChild(startText);
+        last.AppendChild(endText);
+        body.AppendChild(first);
+        body.AppendChild(document.CreateElement("hr"));
+        body.AppendChild(last);
+        using var range = new DomRange(body);
+        range.SetStart(startText, 2);
+        range.SetEnd(endText, 3);
+
+        var clone = range.CloneContents();
+
+        Assert.Equal(new[] { "p", "hr", "p" }, clone.ChildNodes.Cast<DomElement>().Select(element => element.TagName));
+        Assert.Equal("llowor", clone.TextContent);
+        Assert.Equal("helloworld", body.TextContent);
+        Assert.Same(startText, range.StartContainer);
+        Assert.Same(endText, range.EndContainer);
+        Assert.Equal(3, body.ChildNodes.Count);
+    }
+
     private static DomDocument HtmlDocument(out DomElement body)
     {
         var document = new DomDocument();

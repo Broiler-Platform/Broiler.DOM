@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Linq;
 
 
@@ -202,8 +203,9 @@ public sealed class DomNodeIterator : IDisposable
 {
     private int _lastKnownIndex = -1;
     private readonly Func<DomNode, DomFilterResult>? _filter;
-
-
+    private readonly Dictionary<DomNode, int> _snapshotIndices = new(ReferenceEqualityComparer.Instance);
+    private DomNode[]? _snapshot;
+    private ulong _snapshotVersion;
     private bool _disposed;
 
     public DomNodeIterator(DomNode root, DomWhatToShow whatToShow = DomWhatToShow.All, Func<DomNode, DomFilterResult>? filter = null)
@@ -230,6 +232,8 @@ public sealed class DomNodeIterator : IDisposable
             return;
         _disposed = true;
         Root.OwnerDocument.Mutated -= OnMutation;
+        _snapshot = null;
+        _snapshotIndices.Clear();
     }
 
     private void OnMutation(DomMutationRecord mutation)
@@ -261,8 +265,8 @@ public sealed class DomNodeIterator : IDisposable
     public DomNode? NextNode()
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
-        var nodes = Root.InclusiveDescendants().ToArray();
-        var index = Array.IndexOf(nodes, ReferenceNode);
+        var nodes = GetSnapshot();
+        var index = SnapshotIndexOf(ReferenceNode);
         if (index < 0)
             index = _lastKnownIndex >= 0 ? Math.Min(_lastKnownIndex, nodes.Length - 1) : -1;
         var start = PointerBeforeReferenceNode ? index : index + 1;
@@ -271,17 +275,17 @@ public sealed class DomNodeIterator : IDisposable
             var candidate = nodes[i];
             _lastKnownIndex = i;
             var result = Evaluate(candidate);
-            nodes = Root.InclusiveDescendants().ToArray();
+            nodes = GetSnapshot();
             if (result == DomFilterResult.Accept)
             {
                 ReferenceNode = candidate;
                 PointerBeforeReferenceNode = false;
-                var currentIndex = Array.IndexOf(nodes, candidate);
+                var currentIndex = SnapshotIndexOf(candidate);
                 _lastKnownIndex = currentIndex >= 0 ? currentIndex : i;
                 return ReferenceNode;
             }
 
-            var newIndex = Array.IndexOf(nodes, candidate);
+            var newIndex = SnapshotIndexOf(candidate);
             if (newIndex < 0)
                 continue;
             i = newIndex + 1;
@@ -292,8 +296,8 @@ public sealed class DomNodeIterator : IDisposable
     public DomNode? PreviousNode()
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
-        var nodes = Root.InclusiveDescendants().ToArray();
-        var index = Array.IndexOf(nodes, ReferenceNode);
+        var nodes = GetSnapshot();
+        var index = SnapshotIndexOf(ReferenceNode);
         if (index < 0)
             index = _lastKnownIndex >= 0 ? Math.Min(_lastKnownIndex, nodes.Length) : 0;
         var start = PointerBeforeReferenceNode ? index - 1 : index;
@@ -302,21 +306,37 @@ public sealed class DomNodeIterator : IDisposable
             var candidate = nodes[i];
             _lastKnownIndex = i;
             var result = Evaluate(candidate);
-            nodes = Root.InclusiveDescendants().ToArray();
+            nodes = GetSnapshot();
             if (result == DomFilterResult.Accept)
             {
                 ReferenceNode = candidate;
                 PointerBeforeReferenceNode = true;
-                var currentIndex = Array.IndexOf(nodes, candidate);
+                var currentIndex = SnapshotIndexOf(candidate);
                 _lastKnownIndex = currentIndex >= 0 ? currentIndex : i;
                 return ReferenceNode;
             }
 
-            var newIndex = Array.IndexOf(nodes, candidate);
-            i = newIndex >= 0 ? newIndex - 1 : i - 1;
+            var newIndex = SnapshotIndexOf(candidate);
+            i = newIndex >= 0 ? newIndex - 1 : Math.Min(i - 1, nodes.Length - 1);
         }
         return null;
     }
+
+    private DomNode[] GetSnapshot()
+    {
+        if (_snapshot is null || _snapshotVersion != Root.TreeVersion)
+        {
+            _snapshot = Root.InclusiveDescendants().ToArray();
+            _snapshotVersion = Root.TreeVersion;
+            _snapshotIndices.Clear();
+            for (var index = 0; index < _snapshot.Length; index++)
+                _snapshotIndices.Add(_snapshot[index], index);
+        }
+        return _snapshot;
+    }
+
+    private int SnapshotIndexOf(DomNode node) => _snapshotIndices.GetValueOrDefault(node, -1);
+
     private DomFilterResult Evaluate(DomNode node)
     {
         if ((WhatToShow & DomTreeWalker.ShowFlag(node.NodeType)) == 0)

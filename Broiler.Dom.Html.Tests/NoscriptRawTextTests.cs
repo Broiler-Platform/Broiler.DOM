@@ -52,7 +52,7 @@ public sealed class NoscriptRawTextTests
             .Document;
 
         Assert.DoesNotContain(
-            document.DocumentElement.Descendants().OfType<DomElement>(),
+            Assert.IsType<DomElement>(document.DocumentElement).Descendants().OfType<DomElement>(),
             e => e.LocalName.Equals("script", System.StringComparison.OrdinalIgnoreCase));
     }
 
@@ -63,7 +63,7 @@ public sealed class NoscriptRawTextTests
             .ParseDocument("<html><body><noscript><p>a</p><p>b</p></noscript></body></html>")
             .Document;
 
-        var noscript = document.DocumentElement.Descendants()
+        var noscript = Assert.IsType<DomElement>(document.DocumentElement).Descendants()
             .OfType<DomElement>()
             .Single(e => e.LocalName.Equals("noscript", System.StringComparison.OrdinalIgnoreCase));
 
@@ -91,7 +91,7 @@ public sealed class NoscriptRawTextTests
             .Document;
 
         Assert.Contains(
-            document.DocumentElement.Descendants().OfType<DomElement>(),
+            Assert.IsType<DomElement>(document.DocumentElement).Descendants().OfType<DomElement>(),
             e => e.LocalName.Equals("div", System.StringComparison.OrdinalIgnoreCase));
     }
 }

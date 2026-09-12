@@ -63,9 +63,7 @@ public class DomRange : IDisposable
     /// </summary>
     public void SetStart(DomNode container, int offset)
     {
-        ArgumentNullException.ThrowIfNull(container);
-        if (offset < 0)
-            throw new ArgumentOutOfRangeException(nameof(offset), "Range offset must be non-negative.");
+        ValidateBoundary(container, offset);
 
         var collapse = IsAfter(container, offset, _endContainer, _endOffset);
         _startContainer = container;
@@ -84,9 +82,7 @@ public class DomRange : IDisposable
     /// </summary>
     public void SetEnd(DomNode container, int offset)
     {
-        ArgumentNullException.ThrowIfNull(container);
-        if (offset < 0)
-            throw new ArgumentOutOfRangeException(nameof(offset), "Range offset must be non-negative.");
+        ValidateBoundary(container, offset);
 
         var collapse = IsBefore(container, offset, _startContainer, _startOffset);
         _endContainer = container;
@@ -130,7 +126,7 @@ public class DomRange : IDisposable
         if (containerA.IsDescendantOf(containerB))
             return -CompareBoundaryPoints(containerB, offsetB, containerA, offsetA);
 
-        var common = FindCommonAncestor(containerA, containerB);
+        var common = ResolveCommonAncestor(containerA, containerB);
         var childA = containerA;
         var childB = containerB;
         while (!ReferenceEquals(childA.ParentNode, common))
@@ -192,28 +188,13 @@ public class DomRange : IDisposable
         }
     }
 
-    private static DomNode FindCommonAncestor(DomNode first, DomNode second)
-    {
-        var ancestors = first.InclusiveAncestors().ToHashSet();
-        return second.InclusiveAncestors().First(ancestors.Contains);
-    }
-
     // ---- Selection helpers (DOM Standard §4.5) ---------------------------------
 
     /// <summary>
     /// The deepest node that is an inclusive ancestor of both boundary points
     /// (DOM Standard <c>commonAncestorContainer</c>).
     /// </summary>
-    public DomNode CommonAncestorContainer
-    {
-        get
-        {
-            var container = _startContainer;
-            while (!IsInclusiveAncestor(container, _endContainer))
-                container = container.ParentNode!;
-            return container;
-        }
-    }
+    public DomNode CommonAncestorContainer => ResolveCommonAncestor(_startContainer, _endContainer);
 
     /// <summary>Collapses the range onto one of its boundary points (DOM Standard §4.5 "collapse").</summary>
     public void Collapse(bool toStart)
@@ -326,14 +307,7 @@ public class DomRange : IDisposable
             return fragment;
         }
 
-        var commonAncestor = ResolveCommonAncestor(originalStartNode, originalEndNode);
-        var firstPartial = IsInclusiveAncestor(originalStartNode, originalEndNode)
-            ? null
-            : commonAncestor.ChildNodes.FirstOrDefault(IsPartiallyContained);
-        var lastPartial = IsInclusiveAncestor(originalEndNode, originalStartNode)
-            ? null
-            : commonAncestor.ChildNodes.LastOrDefault(IsPartiallyContained);
-        var containedChildren = CollectContainedChildren(commonAncestor);
+        var (firstPartial, lastPartial, containedChildren) = ClassifyContents(originalStartNode, originalEndNode);
 
         var (newNode, newOffset) = CollapsePointAfterRemoval(originalStartNode, originalStartOffset, originalEndNode);
 
@@ -407,14 +381,7 @@ public class DomRange : IDisposable
             return fragment;
         }
 
-        var commonAncestor = ResolveCommonAncestor(originalStartNode, originalEndNode);
-        var firstPartial = IsInclusiveAncestor(originalStartNode, originalEndNode)
-            ? null
-            : commonAncestor.ChildNodes.FirstOrDefault(IsPartiallyContained);
-        var lastPartial = IsInclusiveAncestor(originalEndNode, originalStartNode)
-            ? null
-            : commonAncestor.ChildNodes.LastOrDefault(IsPartiallyContained);
-        var containedChildren = CollectContainedChildren(commonAncestor);
+        var (firstPartial, lastPartial, containedChildren) = ClassifyContents(originalStartNode, originalEndNode);
 
         if (firstPartial is DomCharacterData startData)
         {
@@ -521,8 +488,7 @@ public class DomRange : IDisposable
 
         // Ensure pre-insert validity (DOM §4.2) before the text split mutates the tree,
         // so a rejected insert leaves no split node behind.
-        if (parent.InclusiveAncestors().Contains(node))
-            throw DomException.HierarchyRequest("A node cannot be inserted into itself or one of its descendants.");
+        parent.EnsurePreInsertValidity(node, referenceNode);
 
         if (startNode is DomText startText)
             referenceNode = SplitText(startText, _startOffset);
@@ -616,12 +582,30 @@ public class DomRange : IDisposable
     private static string Substring(DomCharacterData data, int offset, int count) =>
         data.Data.Substring(offset, count);
 
-    private DomNode ResolveCommonAncestor(DomNode start, DomNode end)
+    private static DomNode ResolveCommonAncestor(DomNode start, DomNode end) =>
+        start.CommonAncestorWith(end)
+            ?? throw DomException.WrongDocument("Boundary points belong to different trees.");
+
+    private static void ValidateBoundary(DomNode container, int offset)
     {
-        var container = start;
-        while (!IsInclusiveAncestor(container, end))
-            container = container.ParentNode!;
-        return container;
+        ArgumentNullException.ThrowIfNull(container);
+        if (container is DomDocumentType)
+            throw DomException.InvalidNodeType("A range boundary cannot be a doctype.");
+        if (offset < 0 || offset > NodeLength(container))
+            throw DomException.IndexSize("Range offset must be within the container's length.");
+    }
+
+    private (DomNode? FirstPartial, DomNode? LastPartial, List<DomNode> ContainedChildren)
+        ClassifyContents(DomNode start, DomNode end)
+    {
+        var commonAncestor = ResolveCommonAncestor(start, end);
+        var firstPartial = IsInclusiveAncestor(start, end)
+            ? null
+            : commonAncestor.ChildNodes.FirstOrDefault(IsPartiallyContained);
+        var lastPartial = IsInclusiveAncestor(end, start)
+            ? null
+            : commonAncestor.ChildNodes.LastOrDefault(IsPartiallyContained);
+        return (firstPartial, lastPartial, CollectContainedChildren(commonAncestor));
     }
 
     /// <summary>True when <paramref name="node"/> is fully contained by the range (DOM Standard "contained").</summary>

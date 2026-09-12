@@ -137,6 +137,9 @@ public sealed class DomDocument : DomNode
         if (!_elementsById.TryGetValue(id, out var candidates) || candidates.Count == 0)
             return null;
 
+        if (candidates.Count == 1)
+            return candidates.First();
+
         return Descendants().OfType<DomElement>().FirstOrDefault(candidates.Contains);
     }
 

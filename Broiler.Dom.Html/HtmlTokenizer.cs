@@ -23,16 +23,16 @@ public enum TokenType
 
 /// <summary>A single token emitted by <see cref="HtmlTokenizer"/>.</summary>
 /// <remarks>Creates a new <see cref="HtmlToken"/>.</remarks>
-public sealed class HtmlToken(TokenType type, string name = null, string data = null,
-    bool selfClosing = false, Dictionary<string, string> attributes = null,
+public sealed class HtmlToken(TokenType type, string? name = null, string? data = null,
+    bool selfClosing = false, Dictionary<string, string>? attributes = null,
     string publicId = "", string systemId = "")
 {
     /// <summary>The kind of token.</summary>
     public TokenType Type { get; } = type;
     /// <summary>Tag or doctype name (lower-cased).</summary>
-    public string Name { get; } = name;
+    public string? Name { get; } = name;
     /// <summary>Payload for character and comment tokens.</summary>
-    public string Data { get; } = data;
+    public string? Data { get; } = data;
     /// <summary>Whether the tag uses self-closing syntax.</summary>
     public bool SelfClosing { get; } = selfClosing;
     /// <summary>Attribute map (keys are lower-cased).</summary>
@@ -51,419 +51,730 @@ public sealed class HtmlToken(TokenType type, string name = null, string data = 
 /// </summary>
 public sealed class HtmlTokenizer
 {
-    private enum State
-    {
-        Data, TagOpen, EndTagOpen, TagName,
-        BeforeAttributeName, AttributeName,
-        BeforeAttributeValue, AttributeValueDoubleQuoted,
-        AttributeValueSingleQuoted, AttributeValueUnquoted,
-        AfterAttributeValueQuoted, SelfClosingStartTag,
-        BogusComment, MarkupDeclarationOpen,
-        CommentStart, Comment, CommentEndDash, CommentEnd,
-        Doctype, RawText
-    }
-
-    // Raw text elements: content is treated as text until the matching end tag.
-    //
-    // `noscript` is in the set because scripting is ENABLED. That is the whole condition: with
-    // scripting off a browser parses a noscript body as ordinary markup so the fallback can
-    // render, and with it on the body is raw text, which is what makes everything inside inert
-    // — a nested <script> never runs, an <img> never loads, and the DOM holds one text node
-    // rather than a subtree a page can walk into. Broiler has no scripting-disabled mode (no
-    // such flag exists anywhere), so the set is flat; if one is ever added, this is the line
-    // that has to consult it.
-    private static readonly HashSet<string> RawTextElements = new(StringComparer.OrdinalIgnoreCase)
-    {
-        "script", "style", "noscript"
-    };
-
-    private string _rawTextTag; // tag name for raw text end tag matching
-
-    private string _input;
-    private int _pos;
-    private State _state;
-    private readonly StringBuilder _tag = new();
-    private readonly StringBuilder _buf = new();
-    private readonly StringBuilder _av = new();
-    private Dictionary<string, string> _attrs;
-    private string _an;
-    private bool _selfClose, _isEnd;
-
-    /// <summary>Tokenizes <paramref name="html"/> into a token sequence.</summary>
+    /// <summary>Tokenizes <paramref name="html"/> into an independent token sequence.</summary>
     public IEnumerable<HtmlToken> Tokenize(string html)
     {
         ArgumentNullException.ThrowIfNull(html);
-        _input = html; _pos = 0; _state = State.Data;
-        _buf.Clear(); _tag.Clear(); _av.Clear();
-        _attrs = NewAttrs(); _an = null; _selfClose = _isEnd = false;
+        // Construct inside the iterator so repeated or interleaved enumerations never share state.
+        foreach (var token in new Scanner(html).Read())
+            yield return token;
+    }
 
-        while (true)
+    private sealed class Scanner(string input)
+    {
+        private enum State
         {
-            bool eof = _pos >= _input.Length;
-            char c = eof ? '\0' : _input[_pos];
+            Data,
+            TagOpen,
+            EndTagOpen,
+            TagName,
+            BeforeAttributeName,
+            AttributeName,
+            BeforeAttributeValue,
+            AttributeValueDoubleQuoted,
+            AttributeValueSingleQuoted,
+            AttributeValueUnquoted,
+            AfterAttributeValueQuoted,
+            SelfClosingStartTag,
+            BogusComment,
+            MarkupDeclarationOpen,
+            CommentStart,
+            Comment,
+            CommentEndDash,
+            CommentEnd,
+            Doctype,
+            RawText
+        }
 
-            switch (_state)
+        // Raw text elements: content is treated as text until the matching end tag.
+        //
+        // `noscript` is in the set because scripting is ENABLED. That is the whole condition: with
+        // scripting off a browser parses a noscript body as ordinary markup so the fallback can
+        // render, and with it on the body is raw text, which is what makes everything inside inert
+        // — a nested <script> never runs, an <img> never loads, and the DOM holds one text node
+        // rather than a subtree a page can walk into. Broiler has no scripting-disabled mode (no
+        // such flag exists anywhere), so the set is flat; if one is ever added, this is the line
+        // that has to consult it.
+        private static readonly HashSet<string> RawTextElements = new(StringComparer.OrdinalIgnoreCase)
+        {
+            "script",
+            "style",
+            "noscript"
+        };
+        private string _rawTextTag = string.Empty; // tag name for raw text end tag matching
+        private readonly string _input = input;
+        private int _pos;
+        private State _state;
+        private readonly StringBuilder _tag = new();
+        private readonly StringBuilder _buf = new();
+        private readonly StringBuilder _av = new();
+        private Dictionary<string, string> _attrs = NewAttrs();
+        private readonly StringBuilder _attributeName = new();
+        private bool _selfClose, _isEnd;
+
+        public IEnumerable<HtmlToken> Read()
+        {
+            while (true)
             {
-            case State.Data:
-                if (eof) { if (_buf.Length > 0) yield return CharTok(); yield return Eof(); yield break; }
-                if (c == '<') { if (_buf.Length > 0) yield return CharTok(); _state = State.TagOpen; _pos++; }
-                else
+                bool eof = _pos >= _input.Length;
+                char c = eof ? '\0' : _input[_pos];
+                switch (_state)
                 {
-                    // Consume the whole run up to the next '<' at once. Character data used
-                    // to be appended one char at a time, so a text node cost a loop pass per
-                    // character and then two full-size buffers — the builder's copy and the
-                    // string materialised from it. Nothing is buffered in the common case, so
-                    // the run is emitted straight from the input and materialised once; the
-                    // buffered case (a '<' that turned out to be text) still needs the builder
-                    // but at least appends in one go. Token boundaries are unchanged: a run is
-                    // still only flushed at a '<' or at EOF.
-                    var next = _input.IndexOf('<', _pos);
-                    var end = next < 0 ? _input.Length : next;
-
-                    if (_buf.Length == 0)
-                    {
-                        var raw = _input[_pos..end];
-                        _pos = end;
-                        yield return new HtmlToken(TokenType.Character, data: DecodeReferences(raw));
-                    }
-                    else
-                    {
-                        _buf.Append(_input, _pos, end - _pos);
-                        _pos = end;
-                    }
-                }
-                break;
-
-            case State.TagOpen:
-                if (eof) { _buf.Append('<'); _state = State.Data; }
-                else if (c == '!') { _pos++; _state = State.MarkupDeclarationOpen; }
-                else if (c == '?') { _pos++; SkipProcessingInstruction(); _state = State.Data; }
-                else if (c == '/') { _pos++; _state = State.EndTagOpen; }
-                else if (char.IsLetter(c)) { Reset(false); _state = State.TagName; }
-                else { _buf.Append('<'); _state = State.Data; }
-                break;
-
-            case State.EndTagOpen:
-                if (eof) { _buf.Append("</"); _state = State.Data; }
-                else if (char.IsLetter(c)) { Reset(true); _state = State.TagName; }
-                else { _buf.Clear(); _state = State.BogusComment; }
-                break;
-
-            case State.TagName:
-                if (eof) { _state = State.Data; }
-                else if (char.IsWhiteSpace(c)) { _pos++; _state = State.BeforeAttributeName; }
-                else if (c == '/') { _pos++; _state = State.SelfClosingStartTag; }
-                else if (c == '>') { _pos++; yield return TagTok(); if (_state != State.RawText) _state = State.Data; }
-                else { _tag.Append(char.ToLowerInvariant(c)); _pos++; }
-                break;
-
-            case State.BeforeAttributeName:
-                if (eof) { Flush(); _state = State.Data; }
-                else if (c == '>') { Flush(); _pos++; yield return TagTok(); if (_state != State.RawText) _state = State.Data; }
-                else if (c == '/') { Flush(); _pos++; _state = State.SelfClosingStartTag; }
-                else if (char.IsWhiteSpace(c)) { _pos++; }
-                else { Flush(); _an = string.Empty; _av.Clear(); _state = State.AttributeName; }
-                break;
-
-            case State.AttributeName:
-                if (eof || c == '>' || c == '/' || char.IsWhiteSpace(c)) { _state = State.BeforeAttributeName; }
-                else if (c == '=') { _pos++; _state = State.BeforeAttributeValue; }
-                else { _an += char.ToLowerInvariant(c); _pos++; }
-                break;
-
-            case State.BeforeAttributeValue:
-                if (eof) { _state = State.Data; }
-                else if (char.IsWhiteSpace(c)) { _pos++; }
-                else if (c == '"') { _pos++; _state = State.AttributeValueDoubleQuoted; }
-                else if (c == '\'') { _pos++; _state = State.AttributeValueSingleQuoted; }
-                else { _state = State.AttributeValueUnquoted; }
-                break;
-
-            case State.AttributeValueDoubleQuoted:
-                if (eof) { _state = State.Data; }
-                else if (c == '"') { _pos++; _state = State.AfterAttributeValueQuoted; }
-                else { _av.Append(c); _pos++; }
-                break;
-
-            case State.AttributeValueSingleQuoted:
-                if (eof) { _state = State.Data; }
-                else if (c == '\'') { _pos++; _state = State.AfterAttributeValueQuoted; }
-                else { _av.Append(c); _pos++; }
-                break;
-
-            case State.AttributeValueUnquoted:
-                if (eof) { Flush(); _state = State.Data; }
-                else if (char.IsWhiteSpace(c)) { Flush(); _pos++; _state = State.BeforeAttributeName; }
-                else if (c == '>') { Flush(); _pos++; yield return TagTok(); if (_state != State.RawText) _state = State.Data; }
-                else { _av.Append(c); _pos++; }
-                break;
-
-            case State.AfterAttributeValueQuoted:
-                Flush();
-                if (eof) { _state = State.Data; }
-                else if (char.IsWhiteSpace(c)) { _pos++; _state = State.BeforeAttributeName; }
-                else if (c == '/') { _pos++; _state = State.SelfClosingStartTag; }
-                else if (c == '>') { _pos++; yield return TagTok(); if (_state != State.RawText) _state = State.Data; }
-                else { _state = State.BeforeAttributeName; }
-                break;
-
-            case State.SelfClosingStartTag:
-                if (eof) { _state = State.Data; }
-                else if (c == '>') { _selfClose = true; _pos++; yield return TagTok(); if (_state != State.RawText) _state = State.Data; }
-                else { _state = State.BeforeAttributeName; }
-                break;
-
-            case State.RawText:
-                // Read all content until matching </tagname>
-                {
-                    while (_pos < _input.Length)
-                    {
-                        if (_input[_pos] == '<' && _pos + 1 < _input.Length && _input[_pos + 1] == '/' &&
-                            _pos + 2 + _rawTextTag.Length <= _input.Length &&
-                            string.Compare(_input, _pos + 2, _rawTextTag, 0, _rawTextTag.Length, StringComparison.OrdinalIgnoreCase) == 0)
+                    case State.Data:
+                        if (eof)
                         {
-                            var afterTag = _pos + 2 + _rawTextTag.Length;
-                            if (afterTag < _input.Length && (_input[afterTag] == '>' || char.IsWhiteSpace(_input[afterTag]) || _input[afterTag] == '/'))
+                            if (_buf.Length > 0)
+                                yield return CharTok();
+                            yield return Eof();
+                            yield break;
+                        }
+
+                        if (c == '<')
+                        {
+                            if (_buf.Length > 0)
+                                yield return CharTok();
+                            _state = State.TagOpen;
+                            _pos++;
+                        }
+                        else
+                        {
+                            // Consume the whole run up to the next '<' at once. Character data used
+                            // to be appended one char at a time, so a text node cost a loop pass per
+                            // character and then two full-size buffers — the builder's copy and the
+                            // string materialised from it. Nothing is buffered in the common case, so
+                            // the run is emitted straight from the input and materialised once; the
+                            // buffered case (a '<' that turned out to be text) still needs the builder
+                            // but at least appends in one go. Token boundaries are unchanged: a run is
+                            // still only flushed at a '<' or at EOF.
+                            var next = _input.IndexOf('<', _pos);
+                            var end = next < 0 ? _input.Length : next;
+                            if (_buf.Length == 0)
                             {
-                                // Found the matching end tag - emit accumulated text. Raw-text
-                                // element content (script/style) is NOT entity-decoded.
-                                if (_buf.Length > 0) yield return CharTok(decode: false);
-                                // Skip to after the '>'
-                                _pos = afterTag;
-                                while (_pos < _input.Length && _input[_pos] != '>') _pos++;
-                                if (_pos < _input.Length) _pos++; // skip '>'
-                                // Emit the end tag
-                                yield return new HtmlToken(TokenType.EndTag, name: _rawTextTag);
-                                _rawTextTag = null;
-                                _state = State.Data;
-                                break;
+                                var raw = _input[_pos..end];
+                                _pos = end;
+                                yield return new HtmlToken(TokenType.Character, data: DecodeReferences(raw));
+                            }
+                            else
+                            {
+                                _buf.Append(_input, _pos, end - _pos);
+                                _pos = end;
                             }
                         }
-                        _buf.Append(_input[_pos]);
-                        _pos++;
-                    }
-                    if (_pos >= _input.Length && _state == State.RawText)
+
+                        break;
+                    case State.TagOpen:
+                        if (eof)
+                        {
+                            _buf.Append('<');
+                            _state = State.Data;
+                        }
+                        else if (c == '!')
+                        {
+                            _pos++;
+                            _state = State.MarkupDeclarationOpen;
+                        }
+                        else if (c == '?')
+                        {
+                            _pos++;
+                            SkipProcessingInstruction();
+                            _state = State.Data;
+                        }
+                        else if (c == '/')
+                        {
+                            _pos++;
+                            _state = State.EndTagOpen;
+                        }
+                        else if (char.IsLetter(c))
+                        {
+                            Reset(false);
+                            _state = State.TagName;
+                        }
+                        else
+                        {
+                            _buf.Append('<');
+                            _state = State.Data;
+                        }
+
+                        break;
+                    case State.EndTagOpen:
+                        if (eof)
+                        {
+                            _buf.Append("</");
+                            _state = State.Data;
+                        }
+                        else if (char.IsLetter(c))
+                        {
+                            Reset(true);
+                            _state = State.TagName;
+                        }
+                        else
+                        {
+                            _buf.Clear();
+                            _state = State.BogusComment;
+                        }
+
+                        break;
+                    case State.TagName:
+                        if (eof)
+                        {
+                            _state = State.Data;
+                        }
+                        else if (char.IsWhiteSpace(c))
+                        {
+                            _pos++;
+                            _state = State.BeforeAttributeName;
+                        }
+                        else if (c == '/')
+                        {
+                            _pos++;
+                            _state = State.SelfClosingStartTag;
+                        }
+                        else if (c == '>')
+                        {
+                            _pos++;
+                            yield return TagTok();
+                            if (_state != State.RawText)
+                                _state = State.Data;
+                        }
+                        else
+                        {
+                            _tag.Append(char.ToLowerInvariant(c));
+                            _pos++;
+                        }
+
+                        break;
+                    case State.BeforeAttributeName:
+                        if (eof)
+                        {
+                            Flush();
+                            _state = State.Data;
+                        }
+                        else if (c == '>')
+                        {
+                            Flush();
+                            _pos++;
+                            yield return TagTok();
+                            if (_state != State.RawText)
+                                _state = State.Data;
+                        }
+                        else if (c == '/')
+                        {
+                            Flush();
+                            _pos++;
+                            _state = State.SelfClosingStartTag;
+                        }
+                        else if (char.IsWhiteSpace(c))
+                        {
+                            _pos++;
+                        }
+                        else
+                        {
+                            Flush();
+                            _attributeName.Clear();
+                            _av.Clear();
+                            _state = State.AttributeName;
+                        }
+
+                        break;
+                    case State.AttributeName:
+                        if (eof || c == '>' || c == '/' || char.IsWhiteSpace(c))
+                        {
+                            _state = State.BeforeAttributeName;
+                        }
+                        else if (c == '=')
+                        {
+                            _pos++;
+                            _state = State.BeforeAttributeValue;
+                        }
+                        else
+                        {
+                            _attributeName.Append(char.ToLowerInvariant(c));
+                            _pos++;
+                        }
+
+                        break;
+                    case State.BeforeAttributeValue:
+                        if (eof)
+                        {
+                            _state = State.Data;
+                        }
+                        else if (char.IsWhiteSpace(c))
+                        {
+                            _pos++;
+                        }
+                        else if (c == '"')
+                        {
+                            _pos++;
+                            _state = State.AttributeValueDoubleQuoted;
+                        }
+                        else if (c == '\'')
+                        {
+                            _pos++;
+                            _state = State.AttributeValueSingleQuoted;
+                        }
+                        else
+                        {
+                            _state = State.AttributeValueUnquoted;
+                        }
+
+                        break;
+                    case State.AttributeValueDoubleQuoted:
+                        if (eof)
+                        {
+                            _state = State.Data;
+                        }
+                        else if (c == '"')
+                        {
+                            _pos++;
+                            _state = State.AfterAttributeValueQuoted;
+                        }
+                        else
+                        {
+                            _av.Append(c);
+                            _pos++;
+                        }
+
+                        break;
+                    case State.AttributeValueSingleQuoted:
+                        if (eof)
+                        {
+                            _state = State.Data;
+                        }
+                        else if (c == '\'')
+                        {
+                            _pos++;
+                            _state = State.AfterAttributeValueQuoted;
+                        }
+                        else
+                        {
+                            _av.Append(c);
+                            _pos++;
+                        }
+
+                        break;
+                    case State.AttributeValueUnquoted:
+                        if (eof)
+                        {
+                            Flush();
+                            _state = State.Data;
+                        }
+                        else if (char.IsWhiteSpace(c))
+                        {
+                            Flush();
+                            _pos++;
+                            _state = State.BeforeAttributeName;
+                        }
+                        else if (c == '>')
+                        {
+                            Flush();
+                            _pos++;
+                            yield return TagTok();
+                            if (_state != State.RawText)
+                                _state = State.Data;
+                        }
+                        else
+                        {
+                            _av.Append(c);
+                            _pos++;
+                        }
+
+                        break;
+                    case State.AfterAttributeValueQuoted:
+                        Flush();
+                        if (eof)
+                        {
+                            _state = State.Data;
+                        }
+                        else if (char.IsWhiteSpace(c))
+                        {
+                            _pos++;
+                            _state = State.BeforeAttributeName;
+                        }
+                        else if (c == '/')
+                        {
+                            _pos++;
+                            _state = State.SelfClosingStartTag;
+                        }
+                        else if (c == '>')
+                        {
+                            _pos++;
+                            yield return TagTok();
+                            if (_state != State.RawText)
+                                _state = State.Data;
+                        }
+                        else
+                        {
+                            _state = State.BeforeAttributeName;
+                        }
+
+                        break;
+                    case State.SelfClosingStartTag:
+                        if (eof)
+                        {
+                            _state = State.Data;
+                        }
+                        else if (c == '>')
+                        {
+                            _selfClose = true;
+                            _pos++;
+                            yield return TagTok();
+                            if (_state != State.RawText)
+                                _state = State.Data;
+                        }
+                        else
+                        {
+                            _state = State.BeforeAttributeName;
+                        }
+
+                        break;
+                    case State.RawText:
+                    // Read all content until matching </tagname>
                     {
-                        // EOF in raw text - emit whatever we have (undecoded).
-                        if (_buf.Length > 0) yield return CharTok(decode: false);
-                        _state = State.Data;
+                        while (_pos < _input.Length)
+                        {
+                            if (_input[_pos] == '<' && _pos + 1 < _input.Length && _input[_pos + 1] == '/' && _pos + 2 + _rawTextTag.Length <= _input.Length && string.Compare(_input, _pos + 2, _rawTextTag, 0, _rawTextTag.Length, StringComparison.OrdinalIgnoreCase) == 0)
+                            {
+                                var afterTag = _pos + 2 + _rawTextTag.Length;
+                                if (afterTag < _input.Length && (_input[afterTag] == '>' || char.IsWhiteSpace(_input[afterTag]) || _input[afterTag] == '/'))
+                                {
+                                    // Found the matching end tag - emit accumulated text. Raw-text
+                                    // element content (script/style) is NOT entity-decoded.
+                                    if (_buf.Length > 0)
+                                        yield return CharTok(decode: false);
+                                    // Skip to after the '>'
+                                    _pos = afterTag;
+                                    while (_pos < _input.Length && _input[_pos] != '>')
+                                        _pos++;
+                                    if (_pos < _input.Length)
+                                        _pos++; // skip '>'
+                                    // Emit the end tag
+                                    yield return new HtmlToken(TokenType.EndTag, name: _rawTextTag);
+                                    _rawTextTag = string.Empty;
+                                    _state = State.Data;
+                                    break;
+                                }
+                            }
+
+                            _buf.Append(_input[_pos]);
+                            _pos++;
+                        }
+
+                        if (_pos >= _input.Length && _state == State.RawText)
+                        {
+                            // EOF in raw text - emit whatever we have (undecoded).
+                            if (_buf.Length > 0)
+                                yield return CharTok(decode: false);
+                            _state = State.Data;
+                        }
                     }
+
+                        break;
+                    case State.MarkupDeclarationOpen:
+                        if (Ahead("--"))
+                        {
+                            _pos += 2;
+                            _buf.Clear();
+                            _state = State.CommentStart;
+                        }
+                        else if (AheadCI("DOCTYPE"))
+                        {
+                            _pos += 7;
+                            _tag.Clear();
+                            _state = State.Doctype;
+                        }
+                        else
+                        {
+                            _buf.Clear();
+                            _state = State.BogusComment;
+                        }
+
+                        break;
+                    case State.CommentStart:
+                        if (eof)
+                        {
+                            yield return ComTok();
+                            _state = State.Data;
+                        }
+                        else if (c == '-')
+                        {
+                            _pos++;
+                            _state = State.CommentEndDash;
+                        }
+                        else if (c == '>')
+                        {
+                            _pos++;
+                            yield return ComTok();
+                            _state = State.Data;
+                        }
+                        else
+                        {
+                            _state = State.Comment;
+                        }
+
+                        break;
+                    case State.Comment:
+                        if (eof)
+                        {
+                            yield return ComTok();
+                            _state = State.Data;
+                        }
+                        else if (c == '-')
+                        {
+                            _pos++;
+                            _state = State.CommentEndDash;
+                        }
+                        else
+                        {
+                            _buf.Append(c);
+                            _pos++;
+                        }
+
+                        break;
+                    case State.CommentEndDash:
+                        if (eof)
+                        {
+                            yield return ComTok();
+                            _state = State.Data;
+                        }
+                        else if (c == '-')
+                        {
+                            _pos++;
+                            _state = State.CommentEnd;
+                        }
+                        else
+                        {
+                            _buf.Append('-');
+                            _buf.Append(c);
+                            _pos++;
+                            _state = State.Comment;
+                        }
+
+                        break;
+                    case State.CommentEnd:
+                        if (eof || c == '>')
+                        {
+                            if (!eof)
+                                _pos++;
+                            yield return ComTok();
+                            _state = State.Data;
+                        }
+                        else if (c == '-')
+                        {
+                            _buf.Append('-');
+                            _pos++;
+                        }
+                        else
+                        {
+                            _buf.Append("--");
+                            _buf.Append(c);
+                            _pos++;
+                            _state = State.Comment;
+                        }
+
+                        break;
+                    case State.Doctype:
+                        if (eof)
+                        {
+                            yield return new HtmlToken(TokenType.Doctype);
+                            yield return Eof();
+                            yield break;
+                        }
+                        else if (char.IsWhiteSpace(c))
+                        {
+                            _pos++;
+                        }
+                        else if (c == '>')
+                        {
+                            _pos++;
+                            yield return new HtmlToken(TokenType.Doctype, name: _tag.ToString());
+                            _state = State.Data;
+                        }
+                        else
+                        {
+                            ReadDoctype(out var dtPublicId, out var dtSystemId);
+                            yield return new HtmlToken(TokenType.Doctype, name: _tag.ToString(), publicId: dtPublicId, systemId: dtSystemId);
+                            _state = State.Data;
+                        }
+
+                        break;
+                    case State.BogusComment:
+                        if (eof || c == '>')
+                        {
+                            if (!eof)
+                                _pos++;
+                            yield return ComTok();
+                            _state = State.Data;
+                        }
+                        else
+                        {
+                            _buf.Append(c);
+                            _pos++;
+                        }
+
+                        break;
                 }
-                break;
-
-            case State.MarkupDeclarationOpen:
-                if (Ahead("--")) { _pos += 2; _buf.Clear(); _state = State.CommentStart; }
-                else if (AheadCI("DOCTYPE")) { _pos += 7; _tag.Clear(); _state = State.Doctype; }
-                else { _buf.Clear(); _state = State.BogusComment; }
-                break;
-
-            case State.CommentStart:
-                if (eof) { yield return ComTok(); _state = State.Data; }
-                else if (c == '-') { _pos++; _state = State.CommentEndDash; }
-                else if (c == '>') { _pos++; yield return ComTok(); _state = State.Data; }
-                else { _state = State.Comment; }
-                break;
-
-            case State.Comment:
-                if (eof) { yield return ComTok(); _state = State.Data; }
-                else if (c == '-') { _pos++; _state = State.CommentEndDash; }
-                else { _buf.Append(c); _pos++; }
-                break;
-
-            case State.CommentEndDash:
-                if (eof) { yield return ComTok(); _state = State.Data; }
-                else if (c == '-') { _pos++; _state = State.CommentEnd; }
-                else { _buf.Append('-'); _buf.Append(c); _pos++; _state = State.Comment; }
-                break;
-
-            case State.CommentEnd:
-                if (eof || c == '>') { if (!eof) _pos++; yield return ComTok(); _state = State.Data; }
-                else if (c == '-') { _buf.Append('-'); _pos++; }
-                else { _buf.Append("--"); _buf.Append(c); _pos++; _state = State.Comment; }
-                break;
-
-            case State.Doctype:
-                if (eof) { yield return new HtmlToken(TokenType.Doctype); yield return Eof(); yield break; }
-                else if (char.IsWhiteSpace(c)) { _pos++; }
-                else if (c == '>') { _pos++; yield return new HtmlToken(TokenType.Doctype, name: _tag.ToString()); _state = State.Data; }
-                else
-                {
-                    ReadDoctype(out var dtPublicId, out var dtSystemId);
-                    yield return new HtmlToken(TokenType.Doctype, name: _tag.ToString(),
-                        publicId: dtPublicId, systemId: dtSystemId);
-                    _state = State.Data;
-                }
-                break;
-
-            case State.BogusComment:
-                if (eof || c == '>') { if (!eof) _pos++; yield return ComTok(); _state = State.Data; }
-                else { _buf.Append(c); _pos++; }
-                break;
             }
         }
-    }
 
-    private static Dictionary<string, string> NewAttrs() =>
-        new(StringComparer.OrdinalIgnoreCase);
-
-    private void Reset(bool end)
-    {
-        _isEnd = end; _tag.Clear(); _selfClose = false;
-        _attrs = NewAttrs(); _an = null; _av.Clear();
-    }
-
-    private void Flush()
-    {
-        // An attribute value's character references are decoded here, in the tokenizer, exactly as
-        // character data's are (WHATWG §13.2.5, the attribute-value character-reference states) —
-        // so the DOM holds the value the attribute *means*, not the source text that spelled it.
-        //
-        // This used to leave the raw text for Broiler.HTML's HtmlParser to decode when it built
-        // boxes, which made the rendering right and everything reading the DOM wrong:
-        // `getAttribute("href")` on `href="?a=1&amp;b=2"` returned `?a=1&amp;b=2`, an
-        // `[attr="…"]` selector had to be written against the escaped spelling, and serializing
-        // re-escaped the ampersand so a DOM round-trip corrupted the value a little more each time.
-        // The downstream decode is gone with it — decoding twice would eat a level of escaping.
-        if (_an != null && _an.Length > 0 && !_attrs.ContainsKey(_an))
-            _attrs[_an] = DecodeReferences(_av.ToString());
-        _an = null; _av.Clear();
-    }
-
-    private HtmlToken TagTok()
-    {
-        Flush();
-        var tagName = _tag.ToString();
-        var tok = new HtmlToken(_isEnd ? TokenType.EndTag : TokenType.StartTag,
-            name: tagName, selfClosing: _selfClose, attributes: _attrs);
-        // Switch to raw text mode for script/style start tags
-        if (!_isEnd && !_selfClose && RawTextElements.Contains(tagName))
+        private static Dictionary<string, string> NewAttrs() => new(StringComparer.OrdinalIgnoreCase);
+        private void Reset(bool end)
         {
-            _rawTextTag = tagName;
-            _state = State.RawText;
-        }
-        return tok;
-    }
-
-    private HtmlToken CharTok(bool decode = true)
-    {
-        var raw = _buf.ToString();
-        _buf.Clear();
-        return new HtmlToken(TokenType.Character, data: decode ? DecodeReferences(raw) : raw);
-    }
-
-    /// <summary>
-    /// Decodes HTML character references (named like <c>&amp;nbsp;</c>, decimal
-    /// <c>&amp;#160;</c>, and hex <c>&amp;#xA0;</c>) in ordinary character data and in attribute
-    /// values (WHATWG §13.2.5 character-reference state). Raw-text element content
-    /// (<c>&lt;script&gt;</c>/<c>&lt;style&gt;</c>) is emitted undecoded — its call sites pass
-    /// <c>decode: false</c>. A fast path skips strings with no ampersand.
-    /// </summary>
-    /// <remarks>
-    /// Only a reference terminated by <c>;</c> is decoded, which is what makes this safe to share
-    /// with attribute values: the spec's ambiguous-ampersand rule exists to keep
-    /// <c>href="?a=1&amp;copy=2"</c> from turning into a <c>©</c>, and a semicolon-only decoder
-    /// never had to be told. The cost is the other half of that rule — a terminator-less
-    /// <c>title="&amp;copy"</c> stays literal where a browser would resolve it — which is the
-    /// same conservative gap this helper already had in character data.
-    /// </remarks>
-    private static string DecodeReferences(string value) =>
-        value.IndexOf('&') < 0 ? value : System.Net.WebUtility.HtmlDecode(value);
-
-    private HtmlToken ComTok()
-    {
-        var t = new HtmlToken(TokenType.Comment, data: _buf.ToString());
-        _buf.Clear(); return t;
-    }
-
-    private static HtmlToken Eof() => new(TokenType.EndOfFile);
-
-    private bool Ahead(string s) =>
-        _pos + s.Length <= _input.Length && _input.AsSpan(_pos, s.Length).SequenceEqual(s.AsSpan());
-
-    private bool AheadCI(string s) =>
-        _pos + s.Length <= _input.Length &&
-        string.Compare(_input, _pos, s, 0, s.Length, StringComparison.OrdinalIgnoreCase) == 0;
-
-    // Reads a DOCTYPE's name into _tag, plus its optional PUBLIC/SYSTEM external-identifier
-    // strings (HTML Standard §13.2.5.53-70), then consumes through the closing '>'. Anything
-    // unrecognized between the identifiers and '>' is ignored, matching the prior name-only skip.
-    private void ReadDoctype(out string publicId, out string systemId)
-    {
-        publicId = "";
-        systemId = "";
-
-        _tag.Clear();
-        while (_pos < _input.Length && _input[_pos] != '>' && !char.IsWhiteSpace(_input[_pos]))
-        {
-            _tag.Append(char.ToLowerInvariant(_input[_pos]));
-            _pos++;
+            _isEnd = end;
+            _tag.Clear();
+            _selfClose = false;
+            _attrs = NewAttrs();
+            _attributeName.Clear();
+            _av.Clear();
         }
 
-        SkipWhitespace();
-        if (AheadCI("PUBLIC"))
+        private void Flush()
         {
-            _pos += 6;
-            SkipWhitespace();
-            publicId = ReadDoctypeQuotedString();
-            SkipWhitespace();
-            systemId = ReadDoctypeQuotedString();
+            // An attribute value's character references are decoded here, in the tokenizer, exactly as
+            // character data's are (WHATWG §13.2.5, the attribute-value character-reference states) —
+            // so the DOM holds the value the attribute *means*, not the source text that spelled it.
+            //
+            // This used to leave the raw text for Broiler.HTML's HtmlParser to decode when it built
+            // boxes, which made the rendering right and everything reading the DOM wrong:
+            // `getAttribute("href")` on `href="?a=1&amp;b=2"` returned `?a=1&amp;b=2`, an
+            // `[attr="…"]` selector had to be written against the escaped spelling, and serializing
+            // re-escaped the ampersand so a DOM round-trip corrupted the value a little more each time.
+            // The downstream decode is gone with it — decoding twice would eat a level of escaping.
+            var attributeName = _attributeName.ToString();
+            if (attributeName.Length > 0 && !_attrs.ContainsKey(attributeName))
+                _attrs[attributeName] = DecodeReferences(_av.ToString());
+            _attributeName.Clear();
+            _av.Clear();
         }
-        else if (AheadCI("SYSTEM"))
+
+        private HtmlToken TagTok()
         {
-            _pos += 6;
-            SkipWhitespace();
-            systemId = ReadDoctypeQuotedString();
-        }
-
-        while (_pos < _input.Length && _input[_pos] != '>')
-            _pos++;
-        if (_pos < _input.Length)
-            _pos++;
-    }
-
-    private void SkipWhitespace()
-    {
-        while (_pos < _input.Length && char.IsWhiteSpace(_input[_pos]))
-            _pos++;
-    }
-
-    // Reads a single- or double-quoted DOCTYPE identifier string (without the quotes).
-    // Returns "" when the next character is not a quote.
-    private string ReadDoctypeQuotedString()
-    {
-        if (_pos >= _input.Length || (_input[_pos] != '"' && _input[_pos] != '\''))
-            return "";
-
-        var quote = _input[_pos];
-        _pos++;
-        var start = _pos;
-        while (_pos < _input.Length && _input[_pos] != quote && _input[_pos] != '>')
-            _pos++;
-        var value = _input[start.._pos];
-        if (_pos < _input.Length && _input[_pos] == quote)
-            _pos++;
-        return value;
-    }
-
-    /// <summary>
-    /// Skips an XML processing instruction (<c>&lt;?...?&gt;</c>), such as
-    /// <c>&lt;?xml version="1.0" encoding="UTF-8"?&gt;</c>.
-    /// </summary>
-    private void SkipProcessingInstruction()
-    {
-        while (_pos < _input.Length)
-        {
-            if (_input[_pos] == '?' && _pos + 1 < _input.Length && _input[_pos + 1] == '>')
+            Flush();
+            var tagName = _tag.ToString();
+            var tok = new HtmlToken(_isEnd ? TokenType.EndTag : TokenType.StartTag, name: tagName, selfClosing: _selfClose, attributes: _attrs);
+            // Switch to raw text mode for script/style start tags
+            if (!_isEnd && !_selfClose && RawTextElements.Contains(tagName))
             {
-                _pos += 2;
-                return;
+                _rawTextTag = tagName;
+                _state = State.RawText;
             }
-            if (_input[_pos] == '>')
+
+            return tok;
+        }
+
+        private HtmlToken CharTok(bool decode = true)
+        {
+            var raw = _buf.ToString();
+            _buf.Clear();
+            return new HtmlToken(TokenType.Character, data: decode ? DecodeReferences(raw) : raw);
+        }
+
+        /// <summary>
+        /// Decodes HTML character references (named like <c>&amp;nbsp;</c>, decimal
+        /// <c>&amp;#160;</c>, and hex <c>&amp;#xA0;</c>) in ordinary character data and in attribute
+        /// values (WHATWG §13.2.5 character-reference state). Raw-text element content
+        /// (<c>&lt;script&gt;</c>/<c>&lt;style&gt;</c>) is emitted undecoded — its call sites pass
+        /// <c>decode: false</c>. A fast path skips strings with no ampersand.
+        /// </summary>
+        /// <remarks>
+        /// Only a reference terminated by <c>;</c> is decoded, which is what makes this safe to share
+        /// with attribute values: the spec's ambiguous-ampersand rule exists to keep
+        /// <c>href="?a=1&amp;copy=2"</c> from turning into a <c>©</c>, and a semicolon-only decoder
+        /// never had to be told. The cost is the other half of that rule — a terminator-less
+        /// <c>title="&amp;copy"</c> stays literal where a browser would resolve it — which is the
+        /// same conservative gap this helper already had in character data.
+        /// </remarks>
+        private static string DecodeReferences(string value) => value.IndexOf('&') < 0 ? value : System.Net.WebUtility.HtmlDecode(value);
+        private HtmlToken ComTok()
+        {
+            var t = new HtmlToken(TokenType.Comment, data: _buf.ToString());
+            _buf.Clear();
+            return t;
+        }
+
+        private static HtmlToken Eof() => new(TokenType.EndOfFile);
+        private bool Ahead(string s) => _pos + s.Length <= _input.Length && _input.AsSpan(_pos, s.Length).SequenceEqual(s.AsSpan());
+        private bool AheadCI(string s) => _pos + s.Length <= _input.Length && string.Compare(_input, _pos, s, 0, s.Length, StringComparison.OrdinalIgnoreCase) == 0;
+        // Reads a DOCTYPE's name into _tag, plus its optional PUBLIC/SYSTEM external-identifier
+        // strings (HTML Standard §13.2.5.53-70), then consumes through the closing '>'. Anything
+        // unrecognized between the identifiers and '>' is ignored, matching the prior name-only skip.
+        private void ReadDoctype(out string publicId, out string systemId)
+        {
+            publicId = "";
+            systemId = "";
+            _tag.Clear();
+            while (_pos < _input.Length && _input[_pos] != '>' && !char.IsWhiteSpace(_input[_pos]))
             {
+                _tag.Append(char.ToLowerInvariant(_input[_pos]));
                 _pos++;
-                return;
             }
+
+            SkipWhitespace();
+            if (AheadCI("PUBLIC"))
+            {
+                _pos += 6;
+                SkipWhitespace();
+                publicId = ReadDoctypeQuotedString();
+                SkipWhitespace();
+                systemId = ReadDoctypeQuotedString();
+            }
+            else if (AheadCI("SYSTEM"))
+            {
+                _pos += 6;
+                SkipWhitespace();
+                systemId = ReadDoctypeQuotedString();
+            }
+
+            while (_pos < _input.Length && _input[_pos] != '>')
+                _pos++;
+            if (_pos < _input.Length)
+                _pos++;
+        }
+
+        private void SkipWhitespace()
+        {
+            while (_pos < _input.Length && char.IsWhiteSpace(_input[_pos]))
+                _pos++;
+        }
+
+        // Reads a single- or double-quoted DOCTYPE identifier string (without the quotes).
+        // Returns "" when the next character is not a quote.
+        private string ReadDoctypeQuotedString()
+        {
+            if (_pos >= _input.Length || (_input[_pos] != '"' && _input[_pos] != '\''))
+                return "";
+            var quote = _input[_pos];
             _pos++;
+            var start = _pos;
+            while (_pos < _input.Length && _input[_pos] != quote && _input[_pos] != '>')
+                _pos++;
+            var value = _input[start.._pos];
+            if (_pos < _input.Length && _input[_pos] == quote)
+                _pos++;
+            return value;
+        }
+
+        /// <summary>
+        /// Skips an XML processing instruction (<c>&lt;?...?&gt;</c>), such as
+        /// <c>&lt;?xml version="1.0" encoding="UTF-8"?&gt;</c>.
+        /// </summary>
+        private void SkipProcessingInstruction()
+        {
+            while (_pos < _input.Length)
+            {
+                if (_input[_pos] == '?' && _pos + 1 < _input.Length && _input[_pos + 1] == '>')
+                {
+                    _pos += 2;
+                    return;
+                }
+
+                if (_input[_pos] == '>')
+                {
+                    _pos++;
+                    return;
+                }
+
+                _pos++;
+            }
         }
     }
 }
