@@ -10,13 +10,17 @@ It contains:
 - `Broiler.Dom.Html`: HTML tokenization, document and fragment parsing, tree building,
   and serialization.
 
-## Continuous integration
+## Continuous integration and publishing
 
 Every push and pull request builds both libraries on Linux and Windows, runs both
 test suites, and packs the two packages to prove they still build. Both legs run
 the same platform-neutral code deliberately: a tokenizer is where two hosts
 disagree about newlines, string comparison and culture, and the character-reference
 decoding this component hands to the platform is a different platform on each.
+
+Publish supports GitHub Packages and NuGet.org, automatic preview versions, and
+dry runs. See [CI, packages, and releases](docs/packaging.md) for configuration,
+credentials, and local packaging commands.
 
 ## Standards and rights
 

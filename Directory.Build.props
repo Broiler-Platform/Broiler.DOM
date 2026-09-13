@@ -1,22 +1,9 @@
-﻿<Project>
-
-  <!-- Chain to a parent Directory.Build.props when one exists (in-tree build).
-       Skipped for standalone / submodule builds. The path is captured in a
-       property first so the inner quotes don't collide with the Condition. -->
-  <PropertyGroup>
-    <BroilerParentBuildProps>$([MSBuild]::GetPathOfFileAbove('Directory.Build.props', '$(MSBuildThisFileDirectory)../'))</BroilerParentBuildProps>
-  </PropertyGroup>
-  <Import Project="$(BroilerParentBuildProps)" Condition="'$(BroilerParentBuildProps)' != ''" />
+<Project>
 
   <!-- Broiler NuGet packaging metadata (vendored; do not edit by hand). -->
   <Import Project="$(MSBuildThisFileDirectory)eng\Broiler.Packaging.props" />
 
-  <!-- Component-owned overrides. These are evaluated AFTER the import above and
-       therefore win, which is the extension point the vendored file documents.
-       The shared default points at the organisation; a published package should
-       link to the component's own repository instead. This also settles the
-       value when Broiler.DOM is checked out INSIDE another component, where the
-       chain above has already seen that component's own project URL. -->
+  <!-- Repository-owned packaging overrides. -->
   <PropertyGroup>
     <PackageProjectUrl>https://github.com/Broiler-Platform/Broiler.DOM</PackageProjectUrl>
   </PropertyGroup>
