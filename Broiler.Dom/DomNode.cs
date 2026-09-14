@@ -1,8 +1,11 @@
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
+using System.Diagnostics.CodeAnalysis;
 using System.Linq;
+using System.Runtime.CompilerServices;
 using System.Text;
+using System.Threading;
 
 namespace Broiler.Dom;
 
@@ -87,6 +90,101 @@ public abstract class DomNode
     public DomNode? FirstChild => _children.Count == 0 ? null : _children[0];
 
     public DomNode? LastChild => _children.Count == 0 ? null : _children[^1];
+
+    /// <summary>The DOM <c>parentElement</c>: the parent when it is an element, otherwise <c>null</c>
+    /// (a document or fragment parent, or no parent at all).</summary>
+    public DomElement? ParentElement => ParentNode as DomElement;
+
+    // The element-traversal members below are the DOM's ParentNode (children, firstElementChild,
+    // lastElementChild, childElementCount) and NonDocumentTypeChildNode (previous/nextElementSibling)
+    // mixins. They are declared once here rather than per node class: on a node type the spec does
+    // not give them to, the result is simply empty or null.
+
+    /// <summary>
+    /// The DOM <c>children</c>: this node's element children in tree order, as a snapshot taken when
+    /// read. Text, comment and doctype children are skipped.
+    /// </summary>
+    public IReadOnlyList<DomElement> ChildElements => _children.OfType<DomElement>().ToArray();
+
+    /// <summary>The DOM <c>firstElementChild</c>: the first child that is an element.</summary>
+    public DomElement? FirstElementChild
+    {
+        get
+        {
+            foreach (var child in _children)
+            {
+                if (child is DomElement element)
+                    return element;
+            }
+            return null;
+        }
+    }
+
+    /// <summary>The DOM <c>lastElementChild</c>: the last child that is an element.</summary>
+    public DomElement? LastElementChild
+    {
+        get
+        {
+            for (var index = _children.Count - 1; index >= 0; index--)
+            {
+                if (_children[index] is DomElement element)
+                    return element;
+            }
+            return null;
+        }
+    }
+
+    /// <summary>The DOM <c>childElementCount</c>: the number of children that are elements.</summary>
+    public int ChildElementCount
+    {
+        get
+        {
+            var count = 0;
+            foreach (var child in _children)
+            {
+                if (child is DomElement)
+                    count++;
+            }
+            return count;
+        }
+    }
+
+    /// <summary>The DOM <c>previousElementSibling</c>: the nearest preceding sibling that is an element.</summary>
+    public DomElement? PreviousElementSibling
+    {
+        get
+        {
+            var siblings = ParentNode?._children;
+            if (siblings is null)
+                return null;
+
+            for (var index = siblings.IndexOf(this) - 1; index >= 0; index--)
+            {
+                if (siblings[index] is DomElement element)
+                    return element;
+            }
+            return null;
+        }
+    }
+
+    /// <summary>The DOM <c>nextElementSibling</c>: the nearest following sibling that is an element.</summary>
+    public DomElement? NextElementSibling
+    {
+        get
+        {
+            var siblings = ParentNode?._children;
+            var index = siblings?.IndexOf(this) ?? -1;
+            if (index < 0)
+                return null;
+
+            for (index++; index < siblings!.Count; index++)
+            {
+                if (siblings[index] is DomElement element)
+                    return element;
+            }
+            return null;
+        }
+    }
 
     public bool IsConnected => GetRootNode() is DomDocument;
 
@@ -389,7 +487,14 @@ public abstract class DomNode
     /// <remarks>
     /// Promoted from the HtmlBridge, which aggregated descendant text itself; the
     /// traversal is pure DOM data-model logic.
+    /// <para>
+    /// Setting it follows the same section: a character-data node takes the value as its
+    /// data (<see langword="null"/> as the empty string); an element or fragment has every
+    /// child replaced by one text node holding the value, or by nothing when the value is
+    /// <see langword="null"/> or empty; a document or doctype ignores the write.
+    /// </para>
     /// </remarks>
+    [AllowNull]
     public string TextContent
     {
         get
@@ -401,6 +506,56 @@ public abstract class DomNode
             AppendDescendantText(this, builder);
             return builder.ToString();
         }
+        set
+        {
+            switch (this)
+            {
+                case DomCharacterData characterData:
+                    characterData.Data = value ?? string.Empty;
+                    return;
+                case DomDocument or DomDocumentType:
+                    return;
+            }
+
+            ReplaceAllChildren(string.IsNullOrEmpty(value) ? null : OwnerDocument.CreateTextNode(value));
+        }
+    }
+
+    /// <summary>
+    /// The DOM "replace all" algorithm (§4.2.3): removes every child, inserts <paramref name="node"/>
+    /// when given, and publishes <em>one</em> child-list record carrying both lists, as the spec
+    /// queues one. That record's removed nodes all sat at index 0 with no siblings left, which is
+    /// the shape live ranges and node iterators already resolve exactly as per-child removal would.
+    /// </summary>
+    private void ReplaceAllChildren(DomNode? node)
+    {
+        if (_children.Count == 0 && node is null)
+            return;
+
+        var document = OwnerDocument;
+        var removed = _children.ToArray();
+        foreach (var child in removed)
+        {
+            if (child.IsConnected)
+                document.UnindexConnectedSubtree(child);
+            child.ParentNode = null;
+        }
+        _children.Clear();
+
+        if (node is not null)
+        {
+            _children.Add(node);
+            node.ParentNode = this;
+            if (IsConnected)
+                document.IndexConnectedSubtree(node);
+        }
+
+        MarkChanged();
+        document.PublishMutation(new DomMutationRecord(
+            DomMutationType.ChildList,
+            this,
+            AddedNodes: node is null ? null : [node],
+            RemovedNodes: removed.Length == 0 ? null : removed));
     }
 
     private static void AppendDescendantText(DomNode node, StringBuilder builder)
@@ -454,6 +609,58 @@ public abstract class DomNode
         }
         return null;
     }
+
+    /// <summary>
+    /// The DOM <c>compareDocumentPosition</c> (§4.4): where <paramref name="other"/> sits relative to
+    /// this node, as the spec bitmask. <see cref="DomDocumentPosition.None"/> for the node itself;
+    /// <see cref="DomDocumentPosition.Contains"/> | <see cref="DomDocumentPosition.Preceding"/> for an
+    /// ancestor; <see cref="DomDocumentPosition.ContainedBy"/> | <see cref="DomDocumentPosition.Following"/>
+    /// for a descendant; otherwise <see cref="DomDocumentPosition.Preceding"/> or
+    /// <see cref="DomDocumentPosition.Following"/> by tree order.
+    /// </summary>
+    /// <remarks>
+    /// Nodes in different trees are <see cref="DomDocumentPosition.Disconnected"/> |
+    /// <see cref="DomDocumentPosition.ImplementationSpecific"/> plus a Preceding or Following bit. The
+    /// spec only requires that bit to be consistent, so it comes from a sequence number each root gets
+    /// on its first such comparison: two trees order the same way for as long as both are alive.
+    /// </remarks>
+    public DomDocumentPosition CompareDocumentPosition(DomNode other)
+    {
+        ArgumentNullException.ThrowIfNull(other);
+        if (ReferenceEquals(this, other))
+            return DomDocumentPosition.None;
+
+        var ancestors = InclusiveAncestors().ToArray();
+        var otherAncestors = other.InclusiveAncestors().ToArray();
+        if (!ReferenceEquals(ancestors[^1], otherAncestors[^1]))
+        {
+            return DomDocumentPosition.Disconnected | DomDocumentPosition.ImplementationSpecific |
+                (DisconnectedOrderKey(otherAncestors[^1]) < DisconnectedOrderKey(ancestors[^1])
+                    ? DomDocumentPosition.Preceding
+                    : DomDocumentPosition.Following);
+        }
+
+        if (ancestors.IndexOfReference(other) >= 0)
+            return DomDocumentPosition.Contains | DomDocumentPosition.Preceding;
+        if (otherAncestors.IndexOfReference(this) >= 0)
+            return DomDocumentPosition.ContainedBy | DomDocumentPosition.Following;
+
+        // Neither contains the other, so walking down from the shared root the two ancestor chains
+        // must diverge before either ends. The diverging nodes are siblings; their order is the answer.
+        var depth = 1;
+        while (ReferenceEquals(ancestors[^(depth + 1)], otherAncestors[^(depth + 1)]))
+            depth++;
+        var siblings = ancestors[^depth]._children;
+        return siblings.IndexOf(otherAncestors[^(depth + 1)]) < siblings.IndexOf(ancestors[^(depth + 1)])
+            ? DomDocumentPosition.Preceding
+            : DomDocumentPosition.Following;
+    }
+
+    private static readonly ConditionalWeakTable<DomNode, object> DisconnectedOrderKeys = new();
+    private static long _lastDisconnectedOrderKey;
+
+    private static long DisconnectedOrderKey(DomNode root) =>
+        (long)DisconnectedOrderKeys.GetValue(root, static _ => Interlocked.Increment(ref _lastDisconnectedOrderKey));
 
     public void Normalize()
     {
