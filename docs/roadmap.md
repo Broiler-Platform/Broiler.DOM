@@ -122,32 +122,36 @@ by test.
 
 **Owner:** `Broiler.Dom`.
 
-**Current evidence:** `DomNode.TextContent` is get-only, so the bridge keeps its own
-`SetElementTextContent`, while `DomBridge.GetElementTextContent` duplicates the canonical
-getter outright. `compareDocumentPosition` lives in the bridge as `CompareTreeOrder`,
-which already delegates to `DomRange.CompareBoundaryPoints` but keeps the disconnected
-and ancestor guards and returns `-1`/`0`/`1` rather than the spec bitmask. The
-element-only traversal accessors are recomputed per call in
-`Features/ElementTraversalBinding.cs`.
+**Current evidence:** the component side has landed; the consumers have not cut over.
+The bridge still keeps `SetElementTextContent`, `DomBridge.GetElementTextContent`, and
+`CompareTreeOrder` (which returns `-1`/`0`/`1` rather than the spec bitmask), and
+recomputes the element-only traversal accessors in `Features/ElementTraversalBinding.cs`.
+`Broiler.CSS.Dom` and `Broiler.Documents.Html` carry their own `textContent` and
+element-sibling helpers because the published `Broiler.Dom 0.1.0-preview.1` predates
+`DomNode.TextContent`; they can delete them once a preview with this API is published.
 
-**API:**
+**API (in `Broiler.Dom`, pinned by `DomNodeRelationshipTests`):**
 
-- a `DomNode.TextContent` setter: replaces all children with a single `DomText`, or
-  removes all children for a null or empty value
-- `DomNode.CompareDocumentPosition(DomNode other)` returning the spec bitmask, with
-  `DomDocumentPosition` constants (`Disconnected`, `Preceding`, `Following`, `Contains`,
-  `ContainedBy`, `ImplementationSpecific`)
-- `DomElement.ChildElements`, `FirstElementChild`, `LastElementChild`,
-  `NextElementSibling`, `PreviousElementSibling`, `ChildElementCount`
+- a `DomNode.TextContent` setter: character data takes the value as its data; an element or
+  fragment has all children replaced by a single `DomText`, or removed for a null or empty
+  value, in one child-list record as the spec's "replace all" queues; a document or doctype
+  ignores the write
+- `DomNode.CompareDocumentPosition(DomNode other)` returning the spec bitmask as
+  `DomDocumentPosition` (`Disconnected`, `Preceding`, `Following`, `Contains`,
+  `ContainedBy`, `ImplementationSpecific`), with a consistent order between disconnected
+  trees
+- `DomNode.ParentElement`, `ChildElements`, `FirstElementChild`, `LastElementChild`,
+  `NextElementSibling`, `PreviousElementSibling`, `ChildElementCount` — declared once on
+  `DomNode`, empty or null on node types the spec does not give them to
 
 **Next actions:**
 
-1. Add the members and cover disconnected nodes, ancestor/descendant pairs, sibling
-   order, and text-only trees.
-2. Keep the bitmask spec-shaped. The bridge maps it to the IDL number; the current
-   tri-state contract is not preserved.
-3. Delete `DomBridge.GetElementTextContent`, `SetElementTextContent`, and
-   `CompareTreeOrder`, routing their call sites to the canonical members.
+1. Delete `DomBridge.GetElementTextContent`, `SetElementTextContent`, and
+   `CompareTreeOrder`, routing their call sites to the canonical members; the bridge maps
+   the bitmask to the IDL number, and the tri-state contract is not preserved.
+2. After the next preview is published, delete the `TextContentOf` bridge and the
+   element-sibling helpers in `Broiler.CSS.Dom`, and the inline text aggregation in
+   `Broiler.Documents.Html`.
 
 **Exit gate:** no bridge copy of `textContent`, document-order comparison, or
 element-traversal accessors remains, and the returned position is a spec bitmask.
