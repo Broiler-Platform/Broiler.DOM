@@ -1,4 +1,5 @@
 using System;
+using System.Buffers;
 using System.Collections.Generic;
 using System.Linq;
 
@@ -61,6 +62,21 @@ public sealed class HtmlDocumentParser
         "td", "th", "style", "script", "template"
     };
 
+    /// <summary>
+    /// ASCII whitespace (Infra: tab, LF, FF, CR, space) — the only characters the "initial" insertion
+    /// mode ignores. Not <c>char.IsWhiteSpace</c>: U+00A0, U+000B and U+FEFF are ordinary characters
+    /// there, and end the mode.
+    /// </summary>
+    private static readonly SearchValues<char> AsciiWhitespace = SearchValues.Create("\t\n\f\r ");
+
+    /// <remarks>
+    /// <paramref name="html"/> is the already-decoded input stream. A byte order mark belongs to the
+    /// input byte stream (HTML §13.2.3) and the Encoding Standard's decode strips it before
+    /// tokenization, so it must not still be at the start of the string: a U+FEFF there is an
+    /// ordinary character, which ends the "initial" insertion mode and makes a DOCTYPE after it a
+    /// late one (no DocumentType). <c>File.ReadAllText</c> and <c>StreamReader</c> strip it;
+    /// <c>Encoding.UTF8.GetString</c> does not.
+    /// </remarks>
     public static HtmlDocumentParseResult ParseDocument(string html, DomDocument? document = null)
     {
         ArgumentNullException.ThrowIfNull(html);
@@ -82,12 +98,44 @@ public sealed class HtmlDocumentParser
         var inTitle = false;
         var bodyOpened = false;
 
+        // The document's head and body exist from the start here, so these two flags stand in for
+        // the insertion modes that decide where inter-element whitespace belongs (HTML §13.2.6.4):
+        // "before html"/"before head" ignore it, "in head" keeps it in the head, and "after head"
+        // puts it in the html element, between head and body.
+        var headOpened = false;
+        var headClosed = false;
+
+        // HTML §13.2.6.4.1: the parser starts in the "initial" insertion mode, and only a DOCTYPE
+        // token seen there becomes the document's DocumentType. Comments and ASCII whitespace keep it
+        // there; anything else ends it, and every later mode ("before html" onward, and the fragment
+        // parsing algorithm, which never enters "initial") ignores a DOCTYPE as a parse error. A
+        // DocumentType node is the only document-mode signal this component emits, so a DOCTYPE
+        // accepted after content turned a quirks-mode page into a standards-mode one for every
+        // consumer of the tree.
+        var initialInsertionMode = true;
+
         foreach (var token in new HtmlTokenizer().Tokenize(html))
         {
+            // Decided here, ahead of the switch, rather than inside the per-type cases: the character
+            // case `continue`s past whitespace it drops before the head exists — testing Unicode
+            // whitespace, so U+00A0 with it — and a U+00A0 must still end the initial mode.
+            var inInitialInsertionMode = initialInsertionMode;
+            if (initialInsertionMode && !StaysInInitialInsertionMode(token))
+                initialInsertionMode = false;
+
             switch (token.Type)
             {
                 case TokenType.Doctype:
-                    if (document.DocumentType is null && !string.IsNullOrWhiteSpace(token.Name))
+                    // A DOCTYPE after the initial insertion mode is a parse error and ignored: no
+                    // node, quirks mode (which, with no mode property, is just that absence). This
+                    // used to insert the first named DOCTYPE before <html> wherever it appeared, so
+                    // `<p>x</p><!DOCTYPE html>` read as standards where Chromium gives
+                    // document.doctype === null. The mode flag also covers what the old
+                    // `DocumentType is null` guard did: the first DOCTYPE ends the mode, so a second
+                    // one is never in it, and the document's own children were removed above. A
+                    // nameless DOCTYPE (`<!DOCTYPE>`) ends the mode too, so the named one after it is
+                    // ignored; that the nameless token creates no node itself is a separate gap.
+                    if (inInitialInsertionMode && !string.IsNullOrWhiteSpace(token.Name))
                     {
                         var doctype = document.CreateDocumentType(token.Name, token.PublicId, token.SystemId);
                         document.InsertBefore(doctype, root);
@@ -105,6 +153,8 @@ public sealed class HtmlDocumentParser
                         var target = tag.Equals("html", StringComparison.OrdinalIgnoreCase)
                             ? root
                             : tag.Equals("head", StringComparison.OrdinalIgnoreCase) ? head : body;
+                        if (tag.Equals("head", StringComparison.OrdinalIgnoreCase))
+                            headOpened = true;
                         if (tag.Equals("body", StringComparison.OrdinalIgnoreCase))
                             bodyOpened = true;
                         CopyAttributes(target, token);
@@ -114,6 +164,7 @@ public sealed class HtmlDocumentParser
                     if (tag.Equals("title", StringComparison.OrdinalIgnoreCase))
                     {
                         inTitle = true;
+                        headOpened = true;
                         var titleElement = CreateElement(document, token);
                         head.AppendChild(titleElement);
                         openElements.Push(titleElement);
@@ -122,6 +173,7 @@ public sealed class HtmlDocumentParser
 
                     if (!bodyOpened && HeadMetadataElements.Contains(tag))
                     {
+                        headOpened = true;
                         var metadata = CreateElement(document, token);
                         head.AppendChild(metadata);
                         if (!VoidElements.Contains(tag) && !token.SelfClosing)
@@ -166,6 +218,9 @@ public sealed class HtmlDocumentParser
                         break;
                     }
 
+                    if (tag.Equals("head", StringComparison.OrdinalIgnoreCase))
+                        headClosed = true;
+
                     if (StructuralTags.Contains(tag) || VoidElements.Contains(tag))
                         break;
 
@@ -193,13 +248,37 @@ public sealed class HtmlDocumentParser
                         // common in WPT reftests ("Test passes if …") — silently
                         // dropped that text from the rendered output.
                         if (string.IsNullOrWhiteSpace(token.Data))
-                            parent = head;
+                        {
+                            // Where the whitespace belongs depends on how far the document has got
+                            // (HTML §13.2.6.4). Before the head exists it is dropped; between
+                            // </head> and the body it belongs to the html element; inside the head
+                            // it stays there. All of it used to land in the head, which put the
+                            // newline after the doctype — and the one before <body> — inside it.
+                            if (!headOpened)
+                                continue;
+
+                            parent = headClosed ? root : head;
+                        }
                         else
+                        {
                             bodyOpened = true;
+                        }
                     }
                     if (TableElements.Contains(parent.LocalName) && !string.IsNullOrWhiteSpace(token.Data))
                         parent = FosterParent(openElements, body);
-                    parent.AppendChild(document.CreateTextNode(token.Data));
+
+                    var text = document.CreateTextNode(token.Data);
+                    if (ReferenceEquals(parent, root))
+                    {
+                        // "after head" whitespace goes where the spec's insertion point is — after
+                        // the head — but this builder creates the body up front, so appending to
+                        // the html element would put it after the body instead.
+                        root.InsertBefore(text, body);
+                    }
+                    else
+                    {
+                        parent.AppendChild(text);
+                    }
                     break;
                 }
 
@@ -249,6 +328,33 @@ public sealed class HtmlDocumentParser
             element.SetAttribute(name, value);
     }
 
+    /// <summary>Whether <paramref name="token"/> leaves the parser in HTML §13.2.6.4.1's "initial" insertion mode.</summary>
+    /// <remarks>
+    /// Only a comment or ASCII whitespace does. A DOCTYPE is processed there and then moves the
+    /// parser to "before html", so it ends the mode too, nameless or not; so does any tag and any
+    /// other character. The spec emits one character token per code point, where this tokenizer
+    /// emits a whole run up to the next <c>&lt;</c>, but a DOCTYPE can only follow the whole run, so
+    /// "is anything in the run not ASCII whitespace" gives the same answer for it. CR stays in the
+    /// set even though input stream preprocessing turns literal CRs into LF: <c>&amp;#13;</c> still
+    /// decodes to U+000D. A <c>&lt;?xml ...?&gt;</c> produces no token here at all (the spec's bogus
+    /// comment would be a comment token), so it keeps the mode either way.
+    /// <para>
+    /// The answer is only as good as the token stream, and two tokenizer departures reach it. Whitespace
+    /// spelled as a character reference the tokenizer's decoder leaves literal is text here, so it ends
+    /// the mode where the Standard's ignored whitespace would not: <c>&amp;Tab;</c> and
+    /// <c>&amp;NewLine;</c> (named references outside the platform's table, which stays the platform's)
+    /// and a numeric reference with no semicolon (<c>&amp;#32</c>). And the end tag open state accepts
+    /// any letter where the Standard wants an ASCII alpha, so <c>&lt;/é&gt;</c> is an end tag, which ends
+    /// the mode, rather than the bogus comment that would keep it. A DOCTYPE after either is ignored.
+    /// </para>
+    /// </remarks>
+    private static bool StaysInInitialInsertionMode(HtmlToken token) => token.Type switch
+    {
+        TokenType.Comment => true,
+        TokenType.Character => !token.Data.AsSpan().ContainsAnyExcept(AsciiWhitespace),
+        _ => false,
+    };
+
     private static void AutoCloseCurrent(Stack<DomElement> openElements, string incomingTag)
     {
         if (openElements.Count == 0)
@@ -293,19 +399,44 @@ public sealed class HtmlDocumentParser
             .OfType<DomElement>()
             .FirstOrDefault(element => element.LocalName.Equals(contextTagName, StringComparison.OrdinalIgnoreCase));
 
+    /// <remarks>
+    /// Every wrapper opens with <c>&lt;html&gt;</c>, a start tag, which takes <see cref="ParseDocument"/>
+    /// out of the "initial" insertion mode before the caller's markup is reached. That is what the
+    /// HTML fragment parsing algorithm does too — it resets the insertion mode from the context
+    /// element and never starts in "initial" — so a DOCTYPE in fragment input creates no node, not
+    /// even in the synthetic document. A new wrapper must keep a start tag ahead of the input.
+    /// <para>
+    /// Nothing follows the input. The HTML fragment parsing algorithm (§13.4) tokenizes the input and
+    /// nothing else, so the input's end is the end of the stream; this builder closes whatever is
+    /// still open at end of input, so closing tags after it inserted nothing. What they did do was
+    /// become part of any input left unfinished. In a div, an unterminated script, style or noscript
+    /// read <c>&lt;/div&gt;&lt;/body&gt;&lt;/html&gt;</c> as its text, and so did an unterminated
+    /// comment; <c>&lt;a href=x</c>, which end of input drops (eof-in-tag), became an element whose
+    /// href was <c>x&lt;/div</c>. Once title, textarea, xmp, iframe, noembed,
+    /// noframes and plaintext read as text too, every innerHTML or document.write with an unclosed
+    /// one would have shown the wrapper's tags in the page, and a <c>plaintext</c> context — which no
+    /// end tag leaves — always would.
+    /// </para>
+    /// <para>
+    /// Input that contains the context element's own end tag still closes the wrapper early and loses
+    /// what follows (<c>textarea.innerHTML = "a&lt;/textarea&gt;b"</c>). §13.4 sets the tokenizer state
+    /// from the context element and has no appropriate end tag in the fragment case; that needs a
+    /// parser seeded from the context rather than a string wrapper (roadmap D6).
+    /// </para>
+    /// </remarks>
     private static string BuildFragmentDocument(string contextTag, string html) => contextTag switch
     {
-        "html" => $"<html>{html}</html>",
-        "head" => $"<html><head>{html}</head><body></body></html>",
-        "body" => $"<html><head></head><body>{html}</body></html>",
-        "table" => $"<html><head></head><body><table>{html}</table></body></html>",
-        "thead" or "tbody" or "tfoot" => $"<html><head></head><body><table><{contextTag}>{html}</{contextTag}></table></body></html>",
-        "tr" => $"<html><head></head><body><table><tbody><tr>{html}</tr></tbody></table></body></html>",
-        "td" or "th" => $"<html><head></head><body><table><tbody><tr><{contextTag}>{html}</{contextTag}></tr></tbody></table></body></html>",
-        "colgroup" => $"<html><head></head><body><table><colgroup>{html}</colgroup></table></body></html>",
-        "caption" => $"<html><head></head><body><table><caption>{html}</caption></table></body></html>",
-        "select" => $"<html><head></head><body><select>{html}</select></body></html>",
-        "template" => $"<html><head></head><body><template>{html}</template></body></html>",
-        _ => $"<html><head></head><body><{contextTag}>{html}</{contextTag}></body></html>"
+        "html" => $"<html>{html}",
+        "head" => $"<html><head>{html}",
+        "body" => $"<html><head></head><body>{html}",
+        "table" => $"<html><head></head><body><table>{html}",
+        "thead" or "tbody" or "tfoot" => $"<html><head></head><body><table><{contextTag}>{html}",
+        "tr" => $"<html><head></head><body><table><tbody><tr>{html}",
+        "td" or "th" => $"<html><head></head><body><table><tbody><tr><{contextTag}>{html}",
+        "colgroup" => $"<html><head></head><body><table><colgroup>{html}",
+        "caption" => $"<html><head></head><body><table><caption>{html}",
+        "select" => $"<html><head></head><body><select>{html}",
+        "template" => $"<html><head></head><body><template>{html}",
+        _ => $"<html><head></head><body><{contextTag}>{html}"
     };
 }
