@@ -244,6 +244,59 @@ canonical or deleted.
 - `Features/InsertAdjacentBinding.cs` resolves `beforebegin`/`afterbegin`/`beforeend`/
   `afterend` to a parent and index.
 
+Tokenizer fixes change what the pre-parse token scans see. The bridge's `CspMetaDiscovery`,
+`MetaRefreshDiscovery`, and `HtmlBaseHref` read `HtmlTokenizer` output, so they pick up a
+fix once the package is bumped.
+
+- The abruptly closed empty comment `<!--->` now ends at its `>` (HTML §13.2.5.44 comment
+  start dash state), as `<!-->` already did (§13.2.5.43 comment start state); only
+  `<!--->` changed. It used to swallow everything up to the next `-->`. A `<base>`, CSP
+  `<meta>`, or refresh `<meta>` after it was invisible to the token scans and to the
+  parsed tree, and a fragment lost its wrapper's closing tags as well. Both paths now find
+  those elements.
+  The `<!--->` rewrite in the bridge's `HasHtmlDoctype`
+  (`Broiler.HtmlBridge.DomBridgeUtils/Serialization.cs`) becomes redundant. Removing it
+  is the bridge's follow-up.
+- Whitespace before an attribute's `=` no longer empties the value, in the token stream or
+  the DOM: the tokenizer now has the after attribute name state (HTML §13.2.5.34), so
+  `<base href = "x/">`, `<meta http-equiv = … content = …>`, and a spaced `nonce` or
+  `src` read as the Standard reads them. The whitespace used to end the name and turn the
+  `=` into the start of the next attribute, which committed the name with an empty value
+  and dropped the real one; for a duplicate, that empty value won. The bridge's
+  `HtmlSourceAttributes.CloseSpaceBeforeEquals`, which `TryFindBaseHref` and
+  `ExtractNonceFromAttributes` apply before tokenizing, becomes redundant. Removing it is
+  the bridge's follow-up.
+- The elements that contain only text (HTML §13.2.6.2) now all switch the tokenizer:
+  `title` and `textarea` to RCDATA (references decoded), `style`, `xmp`, `iframe`,
+  `noembed`, `noframes`, and `noscript` to RAWTEXT (not decoded), and `plaintext` to
+  PLAINTEXT, which runs to the end of the input. Only `script`, `style`, and `noscript`
+  used to. A `<base>`, `<meta>`, `<link>`, or `<script>` spelled inside that text is no
+  longer a start tag for the token scans, `HtmlScriptScanner`, or the tree, so the planned
+  `GetEffectiveBaseHref` and `HtmlMetaScanner` will inherit the rule once added. The bridge's
+  `HtmlBaseHref` remarks describe the old departure, and its skipped
+  `TryFindBaseHref_IgnoresABaseInsideAnIframesText` test can run after the bump. An end tag
+  leaves the text only when it is the appropriate one: the same name in any ASCII case,
+  then tab, LF, FF, space, `/`, or `>`. Script text uses the same test now, so
+  `</script\v>` no longer ends a script. The switch is still keyed by tag name, not by the
+  tree builder, so it is not namespace-aware (`<svg><title>` reads as RCDATA) and does not
+  apply to a self-closing start tag.
+- `ParseFragment` no longer appends closing tags after the input. Unterminated input used
+  to absorb them: an unclosed `script`, `style`, `noscript`, or comment read them as its
+  text. With the new text states an unclosed `textarea`, `title`, `xmp`, `iframe`,
+  `noembed`, `noframes`, or `plaintext` would have too, and a `plaintext` context always.
+  A tag the input leaves unfinished is now dropped (eof-in-tag), as browsers drop it,
+  instead of being completed by the wrapper's closing tags: `<img src="a.png"` gives an
+  empty fragment where it used to give an `img` with junk attributes, and `<a href=x` in a
+  `div` no longer gives `href="x</div"`. This reaches `innerHTML`, `outerHTML`,
+  `insertAdjacentHTML`, and each `document.write` call the bridge parses on its own. The
+  fragment context sets the text state (`textarea.innerHTML` reads RCDATA). Input that
+  contains the context element's own end tag still closes the string wrapper early and
+  loses what follows. §13.4 has no appropriate end tag in the fragment case, so this needs
+  a fragment parser that starts the tokenizer in the context element's state with no start
+  tag ahead of the input, not a string wrapper. That is D6's fragment-context work;
+  `TryGetFragmentParsingContext`, which only resolves a context tag name, does not remove
+  it on its own.
+
 **API:**
 
 - `HtmlFragmentParsing.TryGetFragmentParsingContext(DomElement contextElement, out string contextTagName)`

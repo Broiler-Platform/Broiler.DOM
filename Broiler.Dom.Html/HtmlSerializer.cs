@@ -46,9 +46,13 @@ public static class HtmlSerializer
     /// <summary>
     /// HTML elements whose character-data children serialize literally (not
     /// HTML-escaped) per the HTML Standard section 13.3 "Serialising HTML
-    /// fragments" - the raw-text (script, style), escapable raw-text, and legacy
-    /// raw-text elements. Single source of truth for both this serializer's
-    /// leaf-text branch and compatibility adapters (e.g. the HtmlBridge serializer).
+    /// fragments" - the raw text elements (script, style), the legacy ones the
+    /// tokenizer also reads as RAWTEXT or PLAINTEXT (xmp, iframe, noembed,
+    /// noframes, plaintext), and noscript with scripting enabled. The escapable
+    /// raw text elements, title and textarea, are NOT here: their text is
+    /// escaped, and the tokenizer's RCDATA state decodes it back. Single source
+    /// of truth for both this serializer's leaf-text branch and compatibility
+    /// adapters (e.g. the HtmlBridge serializer).
     /// </summary>
     public static readonly IReadOnlySet<string> RawTextElements =
         new HashSet<string>(StringComparer.OrdinalIgnoreCase)
