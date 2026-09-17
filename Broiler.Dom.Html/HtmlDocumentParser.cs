@@ -82,6 +82,13 @@ public sealed class HtmlDocumentParser
         var inTitle = false;
         var bodyOpened = false;
 
+        // The document's head and body exist from the start here, so these two flags stand in for
+        // the insertion modes that decide where inter-element whitespace belongs (HTML §13.2.6.4):
+        // "before html"/"before head" ignore it, "in head" keeps it in the head, and "after head"
+        // puts it in the html element, between head and body.
+        var headOpened = false;
+        var headClosed = false;
+
         foreach (var token in new HtmlTokenizer().Tokenize(html))
         {
             switch (token.Type)
@@ -105,6 +112,8 @@ public sealed class HtmlDocumentParser
                         var target = tag.Equals("html", StringComparison.OrdinalIgnoreCase)
                             ? root
                             : tag.Equals("head", StringComparison.OrdinalIgnoreCase) ? head : body;
+                        if (tag.Equals("head", StringComparison.OrdinalIgnoreCase))
+                            headOpened = true;
                         if (tag.Equals("body", StringComparison.OrdinalIgnoreCase))
                             bodyOpened = true;
                         CopyAttributes(target, token);
@@ -114,6 +123,7 @@ public sealed class HtmlDocumentParser
                     if (tag.Equals("title", StringComparison.OrdinalIgnoreCase))
                     {
                         inTitle = true;
+                        headOpened = true;
                         var titleElement = CreateElement(document, token);
                         head.AppendChild(titleElement);
                         openElements.Push(titleElement);
@@ -122,6 +132,7 @@ public sealed class HtmlDocumentParser
 
                     if (!bodyOpened && HeadMetadataElements.Contains(tag))
                     {
+                        headOpened = true;
                         var metadata = CreateElement(document, token);
                         head.AppendChild(metadata);
                         if (!VoidElements.Contains(tag) && !token.SelfClosing)
@@ -166,6 +177,9 @@ public sealed class HtmlDocumentParser
                         break;
                     }
 
+                    if (tag.Equals("head", StringComparison.OrdinalIgnoreCase))
+                        headClosed = true;
+
                     if (StructuralTags.Contains(tag) || VoidElements.Contains(tag))
                         break;
 
@@ -193,13 +207,37 @@ public sealed class HtmlDocumentParser
                         // common in WPT reftests ("Test passes if …") — silently
                         // dropped that text from the rendered output.
                         if (string.IsNullOrWhiteSpace(token.Data))
-                            parent = head;
+                        {
+                            // Where the whitespace belongs depends on how far the document has got
+                            // (HTML §13.2.6.4). Before the head exists it is dropped; between
+                            // </head> and the body it belongs to the html element; inside the head
+                            // it stays there. All of it used to land in the head, which put the
+                            // newline after the doctype — and the one before <body> — inside it.
+                            if (!headOpened)
+                                continue;
+
+                            parent = headClosed ? root : head;
+                        }
                         else
+                        {
                             bodyOpened = true;
+                        }
                     }
                     if (TableElements.Contains(parent.LocalName) && !string.IsNullOrWhiteSpace(token.Data))
                         parent = FosterParent(openElements, body);
-                    parent.AppendChild(document.CreateTextNode(token.Data));
+
+                    var text = document.CreateTextNode(token.Data);
+                    if (ReferenceEquals(parent, root))
+                    {
+                        // "after head" whitespace goes where the spec's insertion point is — after
+                        // the head — but this builder creates the body up front, so appending to
+                        // the html element would put it after the body instead.
+                        root.InsertBefore(text, body);
+                    }
+                    else
+                    {
+                        parent.AppendChild(text);
+                    }
                     break;
                 }
 

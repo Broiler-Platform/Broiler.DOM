@@ -124,4 +124,37 @@ public sealed class HtmlDocumentParserTests
 
         Assert.Equal(first, second);
     }
+
+    [Fact(Timeout = 600000)]
+    public void Inter_Element_Whitespace_Follows_The_Insertion_Mode()
+    {
+        // HTML §13.2.6.4: "before html" and "before head" ignore whitespace, "in head" keeps it in
+        // the head, and "after head" puts it in the html element. Every one of these newlines used
+        // to end up inside the head, which is what the html52 dom baselines tripped over.
+        var document = HtmlDocumentParser.ParseDocument(
+            "<!doctype html>\n<html>\n<head>\n  <title>t</title>\n</head>\n<body>\n  <p>x</p>\n</body>\n</html>")
+            .Document;
+
+        Assert.DoesNotContain(document.ChildNodes, node => node is DomText);
+
+        var head = document.Head!;
+        Assert.Equal(["\n  ", "\n"], head.ChildNodes.OfType<DomText>().Select(text => text.Data));
+
+        var children = document.DocumentElement!.ChildNodes.ToArray();
+        Assert.Equal(3, children.Length);
+        Assert.Same(head, children[0]);
+        Assert.Equal("\n", Assert.IsType<DomText>(children[1]).Data);
+        Assert.Same(document.Body, children[2]);
+    }
+
+    [Fact(Timeout = 600000)]
+    public void Input_Stream_Newlines_Are_Normalized_To_Line_Feeds()
+    {
+        // Preprocessing the input stream (HTML §13.2.3.5). Without it a CRLF file parsed into text
+        // nodes that carried "\r\n", so a document's tree depended on how the file was saved.
+        var document = HtmlDocumentParser.ParseDocument("<p>a\r\nb\rc</p>").Document;
+
+        var paragraph = Assert.Single(document.GetElementsByTagName("p"));
+        Assert.Equal("a\nb\nc", Assert.IsType<DomText>(paragraph.FirstChild).Data);
+    }
 }

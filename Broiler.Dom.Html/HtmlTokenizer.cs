@@ -56,9 +56,17 @@ public sealed class HtmlTokenizer
     {
         ArgumentNullException.ThrowIfNull(html);
         // Construct inside the iterator so repeated or interleaved enumerations never share state.
-        foreach (var token in new Scanner(html).Read())
+        foreach (var token in new Scanner(NormalizeNewlines(html)).Read())
             yield return token;
     }
+
+    /// <summary>
+    /// Preprocessing the input stream (HTML §13.2.3.5): CRLF pairs and lone CR characters both
+    /// become a single LF before tokenizing, so a document's text nodes read the same whichever
+    /// line endings the file was saved with.
+    /// </summary>
+    private static string NormalizeNewlines(string html) =>
+        html.Contains('\r') ? html.Replace("\r\n", "\n").Replace('\r', '\n') : html;
 
     private sealed class Scanner(string input)
     {
