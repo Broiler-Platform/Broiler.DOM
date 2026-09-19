@@ -9,7 +9,7 @@ using System.Threading;
 
 namespace Broiler.Dom;
 
-public abstract class DomNode
+public abstract partial class DomNode
 {
     private readonly List<DomNode> _children = [];
     private readonly ReadOnlyCollection<DomNode> _childNodes;
@@ -186,7 +186,7 @@ public abstract class DomNode
         }
     }
 
-    public bool IsConnected => GetRootNode() is DomDocument;
+    public bool IsConnected => GetRootNode(composed: true) is DomDocument;
 
     public ulong TreeVersion { get; private set; }
 
@@ -447,11 +447,18 @@ public abstract class DomNode
         return true;
     }
 
-    public DomNode GetRootNode()
+    public DomNode GetRootNode(bool composed = false)
     {
         DomNode current = this;
-        while (current.ParentNode is not null)
-            current = current.ParentNode;
+        while (true)
+        {
+            if (current.ParentNode is not null)
+                current = current.ParentNode;
+            else if (composed && current is DomShadowRoot shadowRoot && shadowRoot.Host is not null)
+                current = shadowRoot.Host;
+            else
+                break;
+        }
         return current;
     }
 
@@ -529,10 +536,10 @@ public abstract class DomNode
     /// </summary>
     private void ReplaceAllChildren(DomNode? node)
     {
-        if (_children.Count == 0 && node is null)
+        if (_children.Count == 0 && (node is null || (node is DomDocumentFragment frag && frag.ChildNodes.Count == 0)))
             return;
 
-        var document = OwnerDocument;
+        var document = this is DomDocument doc ? doc : OwnerDocument;
         var removed = _children.ToArray();
         foreach (var child in removed)
         {
@@ -542,19 +549,34 @@ public abstract class DomNode
         }
         _children.Clear();
 
-        if (node is not null)
+        DomNode[]? added = null;
+        if (node is DomDocumentFragment fragment)
+        {
+            var fragChildren = fragment._children.ToArray();
+            fragment._children.Clear();
+            foreach (var child in fragChildren)
+            {
+                _children.Add(child);
+                child.ParentNode = this;
+                if (IsConnected)
+                    document.IndexConnectedSubtree(child);
+            }
+            added = fragChildren.Length == 0 ? null : fragChildren;
+        }
+        else if (node is not null)
         {
             _children.Add(node);
             node.ParentNode = this;
             if (IsConnected)
                 document.IndexConnectedSubtree(node);
+            added = [node];
         }
 
         MarkChanged();
         document.PublishMutation(new DomMutationRecord(
             DomMutationType.ChildList,
             this,
-            AddedNodes: node is null ? null : [node],
+            AddedNodes: added,
             RemovedNodes: removed.Length == 0 ? null : removed));
     }
 
@@ -589,6 +611,9 @@ public abstract class DomNode
         return false;
     }
 
+    public bool Contains(DomNode? other) =>
+        other is not null && (ReferenceEquals(this, other) || other.IsDescendantOf(this));
+
     /// <summary>
     /// The nearest common inclusive ancestor of this node and <paramref name="other"/> — the deepest
     /// node that is an inclusive ancestor of both — or <c>null</c> when they belong to different trees
@@ -609,58 +634,6 @@ public abstract class DomNode
         }
         return null;
     }
-
-    /// <summary>
-    /// The DOM <c>compareDocumentPosition</c> (§4.4): where <paramref name="other"/> sits relative to
-    /// this node, as the spec bitmask. <see cref="DomDocumentPosition.None"/> for the node itself;
-    /// <see cref="DomDocumentPosition.Contains"/> | <see cref="DomDocumentPosition.Preceding"/> for an
-    /// ancestor; <see cref="DomDocumentPosition.ContainedBy"/> | <see cref="DomDocumentPosition.Following"/>
-    /// for a descendant; otherwise <see cref="DomDocumentPosition.Preceding"/> or
-    /// <see cref="DomDocumentPosition.Following"/> by tree order.
-    /// </summary>
-    /// <remarks>
-    /// Nodes in different trees are <see cref="DomDocumentPosition.Disconnected"/> |
-    /// <see cref="DomDocumentPosition.ImplementationSpecific"/> plus a Preceding or Following bit. The
-    /// spec only requires that bit to be consistent, so it comes from a sequence number each root gets
-    /// on its first such comparison: two trees order the same way for as long as both are alive.
-    /// </remarks>
-    public DomDocumentPosition CompareDocumentPosition(DomNode other)
-    {
-        ArgumentNullException.ThrowIfNull(other);
-        if (ReferenceEquals(this, other))
-            return DomDocumentPosition.None;
-
-        var ancestors = InclusiveAncestors().ToArray();
-        var otherAncestors = other.InclusiveAncestors().ToArray();
-        if (!ReferenceEquals(ancestors[^1], otherAncestors[^1]))
-        {
-            return DomDocumentPosition.Disconnected | DomDocumentPosition.ImplementationSpecific |
-                (DisconnectedOrderKey(otherAncestors[^1]) < DisconnectedOrderKey(ancestors[^1])
-                    ? DomDocumentPosition.Preceding
-                    : DomDocumentPosition.Following);
-        }
-
-        if (ancestors.IndexOfReference(other) >= 0)
-            return DomDocumentPosition.Contains | DomDocumentPosition.Preceding;
-        if (otherAncestors.IndexOfReference(this) >= 0)
-            return DomDocumentPosition.ContainedBy | DomDocumentPosition.Following;
-
-        // Neither contains the other, so walking down from the shared root the two ancestor chains
-        // must diverge before either ends. The diverging nodes are siblings; their order is the answer.
-        var depth = 1;
-        while (ReferenceEquals(ancestors[^(depth + 1)], otherAncestors[^(depth + 1)]))
-            depth++;
-        var siblings = ancestors[^depth]._children;
-        return siblings.IndexOf(otherAncestors[^(depth + 1)]) < siblings.IndexOf(ancestors[^(depth + 1)])
-            ? DomDocumentPosition.Preceding
-            : DomDocumentPosition.Following;
-    }
-
-    private static readonly ConditionalWeakTable<DomNode, object> DisconnectedOrderKeys = new();
-    private static long _lastDisconnectedOrderKey;
-
-    private static long DisconnectedOrderKey(DomNode root) =>
-        (long)DisconnectedOrderKeys.GetValue(root, static _ => Interlocked.Increment(ref _lastDisconnectedOrderKey));
 
     public void Normalize()
     {
@@ -714,67 +687,4 @@ public abstract class DomNode
             current.TreeVersion++;
     }
 
-    private void EnsureCanHaveChildren()
-    {
-        if (this is DomText or DomComment or DomDocumentType)
-            throw DomException.HierarchyRequest($"{NodeType} nodes cannot have children.");
-    }
-
-    internal void EnsurePreInsertValidity(DomNode node, DomNode? referenceNode, DomNode? replacedChild = null)
-    {
-        EnsureCanHaveChildren();
-
-        if (ReferenceEquals(node, this) || InclusiveAncestors().Contains(node))
-            throw DomException.HierarchyRequest("A node cannot be inserted into itself or one of its descendants.");
-
-        if (node is DomDocument)
-            throw DomException.HierarchyRequest("A document cannot be inserted into another node.");
-
-        if (this is not DomDocument document)
-            return;
-
-        if (ReferenceEquals(referenceNode, node))
-            referenceNode = node.NextSibling;
-
-        var candidates = node is DomDocumentFragment
-            ? node.ChildNodes
-            : [node];
-
-        if (candidates.Any(static candidate => candidate is DomText))
-            throw DomException.HierarchyRequest("Text nodes cannot be direct children of a document.");
-
-        // Validate the resulting child order before removal, adoption, or notifications.
-        // Exclude both a moved node and a replaced child when checking document uniqueness.
-        var children = document._children
-            .Where(child => !ReferenceEquals(child, node) && !ReferenceEquals(child, replacedChild))
-            .ToList();
-        var insertionIndex = referenceNode is null ? children.Count : children.IndexOf(referenceNode);
-        children.InsertRange(insertionIndex, candidates);
-
-        if (children.Count(static child => child is DomElement) > 1 ||
-            children.Count(static child => child is DomDocumentType) > 1)
-            throw DomException.HierarchyRequest("A document can contain only one element and one document type.");
-
-        var elementIndex = children.FindIndex(static child => child is DomElement);
-        var doctypeIndex = children.FindIndex(static child => child is DomDocumentType);
-        if (elementIndex >= 0 && doctypeIndex > elementIndex)
-            throw DomException.HierarchyRequest("A document type must precede the document element.");
-    }
-
-}
-
-public static class DomNodeCollectionExtensions
-{
-    /// <summary>Index of <paramref name="target"/> in <paramref name="nodes"/> by reference equality,
-    /// or -1 if absent. Public so bridge/host consumers can reuse the canonical reference-index scan
-    /// (e.g. <c>DomBridge.ChildIndexOf</c>) instead of re-implementing the loop.</summary>
-    public static int IndexOfReference(this IReadOnlyList<DomNode> nodes, DomNode target)
-    {
-        for (var index = 0; index < nodes.Count; index++)
-        {
-            if (ReferenceEquals(nodes[index], target))
-                return index;
-        }
-        return -1;
-    }
 }

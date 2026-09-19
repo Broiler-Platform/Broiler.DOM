@@ -19,19 +19,25 @@ public sealed class DomException : InvalidOperationException
     /// </summary>
     public string Name { get; }
 
-    internal static DomException InvalidCharacter(string message) => new("InvalidCharacterError", message);
+    public static DomException InvalidCharacter(string message) => new("InvalidCharacterError", message);
 
-    internal static DomException HierarchyRequest(string message) => new("HierarchyRequestError", message);
+    public static DomException HierarchyRequest(string message) => new("HierarchyRequestError", message);
 
-    internal static DomException NotFound(string message) => new("NotFoundError", message);
+    public static DomException NotFound(string message) => new("NotFoundError", message);
 
-    internal static DomException Namespace(string message) => new("NamespaceError", message);
+    public static DomException Namespace(string message) => new("NamespaceError", message);
 
-    internal static DomException WrongDocument(string message) => new("WrongDocumentError", message);
+    public static DomException WrongDocument(string message) => new("WrongDocumentError", message);
 
-    internal static DomException InvalidState(string message) => new("InvalidStateError", message);
+    public static DomException InvalidState(string message) => new("InvalidStateError", message);
 
-    internal static DomException InvalidNodeType(string message) => new("InvalidNodeTypeError", message);
+    public static DomException InvalidNodeType(string message) => new("InvalidNodeTypeError", message);
 
-    internal static DomException IndexSize(string message) => new("IndexSizeError", message);
+    public static DomException IndexSize(string message) => new("IndexSizeError", message);
+
+    public static DomException Syntax(string message) => new("SyntaxError", message);
+
+    public static DomException NoModificationAllowed(string message) => new("NoModificationAllowedError", message);
+
+    public static DomException NotSupported(string message) => new("NotSupportedError", message);
 }

@@ -103,14 +103,11 @@ public static class HtmlElementQueries
     /// </summary>
     public static double ReadNumericAttribute(DomElement element, string attributeName, double fallback)
     {
-        foreach (var attribute in element.Attributes.Values)
+        if (element.TryGetAttributeByQualifiedName(attributeName, out var raw))
         {
-            if (!string.Equals(attribute.QualifiedName, attributeName, StringComparison.OrdinalIgnoreCase))
-                continue;
-
-            return string.IsNullOrWhiteSpace(attribute.Value)
+            return string.IsNullOrWhiteSpace(raw)
                 ? fallback
-                : double.TryParse(attribute.Value, NumberStyles.Float, CultureInfo.InvariantCulture, out var parsed)
+                : double.TryParse(raw, NumberStyles.Float, CultureInfo.InvariantCulture, out var parsed)
                     ? parsed
                     : fallback;
         }

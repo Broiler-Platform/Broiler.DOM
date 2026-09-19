@@ -1,3 +1,5 @@
+using System;
+using System.Collections.Generic;
 using System.Text.RegularExpressions;
 
 namespace Broiler.Dom;
@@ -109,4 +111,23 @@ public static partial class DomNameValidation
                 "Failed to execute 'createElementNS': The XMLNS namespace URI may only be used with prefix 'xmlns'.");
         }
     }
+
+    /// <summary>
+    /// A valid custom element name (HTML §4.13.1): starts with an ASCII lower alpha, contains a
+    /// hyphen, and holds no upper-case letters.
+    /// </summary>
+    [GeneratedRegex(@"^[a-z][-._0-9a-z]*-[-._0-9a-z]*$", RegexOptions.Compiled)]
+    private static partial Regex ValidCustomElementNamePatternRegex();
+
+    private static readonly HashSet<string> ReservedCustomElementNames = new(StringComparer.Ordinal)
+    {
+        "annotation-xml", "color-profile", "font-face", "font-face-src", "font-face-uri",
+        "font-face-format", "font-face-name", "missing-glyph",
+    };
+
+    /// <summary>
+    /// Determines whether the specified string is a valid custom element name per HTML §4.13.1.
+    /// </summary>
+    public static bool IsValidCustomElementName(string name) =>
+        !string.IsNullOrEmpty(name) && !ReservedCustomElementNames.Contains(name) && ValidCustomElementNamePatternRegex().IsMatch(name);
 }

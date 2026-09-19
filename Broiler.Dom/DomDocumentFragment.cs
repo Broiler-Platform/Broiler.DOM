@@ -1,6 +1,6 @@
 namespace Broiler.Dom;
 
-public sealed class DomDocumentFragment : DomNode
+public class DomDocumentFragment : DomNode
 {
     internal DomDocumentFragment(DomDocument ownerDocument)
         : base(DomNodeType.DocumentFragment, ownerDocument)
