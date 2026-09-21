@@ -698,9 +698,17 @@ public abstract partial class DomNode
 
     internal abstract DomNode CloneShallow(DomDocument ownerDocument);
 
+    /// <remarks>
+    /// Template contents travel with the template (HTML §4.12.3's adopting steps), and a child walk
+    /// does not reach them — the same reason <see cref="CopyTemplateContents"/> exists for the two
+    /// copying paths. Without this, adopting a template left its contents, and everything inside
+    /// them, owned by the document they came from.
+    /// </remarks>
     internal void SetOwnerDocument(DomDocument document)
     {
         _ownerDocument = document;
+        if (this is DomElement { TemplateContents: { } contents })
+            contents.SetOwnerDocument(document);
         foreach (var child in _children)
             child.SetOwnerDocument(document);
     }

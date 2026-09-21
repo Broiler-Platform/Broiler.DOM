@@ -92,4 +92,24 @@ public sealed class DomTemplateContentsTests
         Assert.Equal("a", imported.TemplateContents!.TextContent);
         Assert.Same(target, imported.TemplateContents.OwnerDocument);
     }
+
+    /// <summary>
+    /// HTML §4.12.3's adopting steps move a template's contents with it. The contents are not
+    /// children, so the walk behind <c>adoptNode</c> does not reach them on its own.
+    /// </summary>
+    [Fact(Timeout = 600000)]
+    public void Adopting_A_Template_Takes_Its_Contents_To_The_New_Document()
+    {
+        var source = new DomDocument();
+        var template = source.CreateElement("template");
+        var span = source.CreateElement("span");
+        template.TemplateContents!.AppendChild(span);
+
+        var target = new DomDocument();
+        target.AdoptNode(template);
+
+        Assert.Same(target, template.OwnerDocument);
+        Assert.Same(target, template.TemplateContents.OwnerDocument);
+        Assert.Same(target, span.OwnerDocument);
+    }
 }

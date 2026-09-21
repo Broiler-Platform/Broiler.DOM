@@ -246,8 +246,9 @@ public sealed class HtmlDocumentParser
                         parent = tbody;
                     }
 
-                    if (TableElements.Contains(parent.LocalName) && !TableChildElements.Contains(tag))
-                        parent = FosterParent(openElements, body);
+                    var insertionTarget = TableElements.Contains(parent.LocalName) && !TableChildElements.Contains(tag)
+                        ? FosterParent(openElements, body)
+                        : InsertionPoint(parent, shadowContents);
 
                     if (options.AllowDeclarativeShadowRoots && !token.SelfClosing &&
                         openElements.Count > declarativeShadowRootFloor &&
@@ -262,7 +263,7 @@ public sealed class HtmlDocumentParser
                         break;
                     }
 
-                    InsertionPoint(parent, shadowContents).AppendChild(element);
+                    insertionTarget.AppendChild(element);
                     if (!VoidElements.Contains(tag) && !token.SelfClosing)
                         openElements.Push(element);
                     break;
@@ -328,11 +329,12 @@ public sealed class HtmlDocumentParser
                             bodyOpened = true;
                         }
                     }
-                    if (TableElements.Contains(parent.LocalName) && !string.IsNullOrWhiteSpace(token.Data))
-                        parent = FosterParent(openElements, body);
+                    var textTarget = TableElements.Contains(parent.LocalName) && !string.IsNullOrWhiteSpace(token.Data)
+                        ? FosterParent(openElements, body)
+                        : InsertionPoint(parent, shadowContents);
 
                     var text = document.CreateTextNode(token.Data);
-                    if (ReferenceEquals(parent, root))
+                    if (ReferenceEquals(textTarget, root))
                     {
                         // "after head" whitespace goes where the spec's insertion point is — after
                         // the head — but this builder creates the body up front, so appending to
@@ -341,7 +343,7 @@ public sealed class HtmlDocumentParser
                     }
                     else
                     {
-                        InsertionPoint(parent, shadowContents).AppendChild(text);
+                        textTarget.AppendChild(text);
                     }
                     break;
                 }
@@ -556,12 +558,22 @@ public sealed class HtmlDocumentParser
         }
     }
 
-    private static DomElement FosterParent(Stack<DomElement> openElements, DomElement body)
+    /// <remarks>
+    /// HTML §13.2.6.1 fosters into the last table's <em>parent node</em>, which need not be an
+    /// element: a table written inside a <c>&lt;template&gt;</c> hangs off the contents fragment,
+    /// and one inside a declarative shadow root hangs off the shadow root. Narrowing the parent to
+    /// <see cref="DomElement"/> turned both into the fallback, so
+    /// <c>&lt;template&gt;&lt;table&gt;&lt;div&gt;</c> put the div in the body — markup the
+    /// template model exists to keep inert, back in the document tree where every query here sees
+    /// it again. The reverse case, a template <em>below</em> the table, needs nothing: a template
+    /// is then the current node, which is not a table, so nothing is fostered at all.
+    /// </remarks>
+    private static DomNode FosterParent(Stack<DomElement> openElements, DomElement body)
     {
         foreach (var element in openElements)
         {
             if (element.LocalName.Equals("table", StringComparison.OrdinalIgnoreCase))
-                return element.ParentNode as DomElement ?? body;
+                return element.ParentNode ?? body;
         }
         return body;
     }

@@ -192,4 +192,40 @@ public sealed class HtmlTemplateContentsTests
         Assert.Empty(result.Document.GetElementsByTagName("div"));
         Assert.Equal("cell", template.TemplateContents!.TextContent);
     }
+
+    /// <summary>
+    /// HTML §13.2.6.1: when the last template on the stack of open elements is below the last
+    /// table, foster parenting puts the node in the template's contents, not beside the table.
+    /// </summary>
+    /// <remarks>
+    /// The table inside a template has a fragment for a parent, not an element, so a foster parent
+    /// derived from the table's parent alone falls back to the body — and content the Standard
+    /// calls inert reappears in the document tree, which is the whole thing this model prevents.
+    /// </remarks>
+    [Fact(Timeout = 600000)]
+    public void Foster_Parenting_Inside_A_Template_Stays_In_The_Template()
+    {
+        var result = HtmlDocumentParser.ParseDocument(
+            "<body><template><table><div id=fostered>x</div></table></template></body>");
+
+        var template = result.Document.Body!.ChildNodes.OfType<DomElement>().Single();
+        Assert.Equal("template", template.LocalName);
+        Assert.Null(result.Document.GetElementById("fostered"));
+        Assert.Empty(result.Document.GetElementsByTagName("div"));
+
+        var fostered = template.TemplateContents!.ChildNodes.OfType<DomElement>()
+            .Single(element => element.LocalName == "div");
+        Assert.Equal("x", fostered.TextContent);
+    }
+
+    [Fact(Timeout = 600000)]
+    public void Foster_Parented_Text_Inside_A_Template_Stays_In_The_Template()
+    {
+        var result = HtmlDocumentParser.ParseDocument(
+            "<body><template><table>stray</table></template></body>");
+
+        var template = Assert.IsType<DomElement>(Assert.Single(result.Document.Body!.ChildNodes));
+        Assert.Equal("template", template.LocalName);
+        Assert.Equal("stray", template.TemplateContents!.TextContent);
+    }
 }
