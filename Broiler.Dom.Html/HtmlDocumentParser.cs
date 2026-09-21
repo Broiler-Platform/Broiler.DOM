@@ -1,6 +1,7 @@
 using System;
 using System.Buffers;
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 
 namespace Broiler.Dom.Html;
@@ -15,6 +16,23 @@ public sealed record HtmlDocumentParseResult(
 public sealed record HtmlFragmentParseResult(
     DomDocumentFragment Fragment,
     IReadOnlyList<HtmlParseDiagnostic> Diagnostics);
+
+/// <summary>
+/// Caller-supplied switches for a parse whose answer the markup alone does not give.
+/// </summary>
+/// <param name="AllowDeclarativeShadowRoots">
+/// Whether a <c>&lt;template shadowrootmode&gt;</c> attaches a shadow root to its intended parent
+/// (HTML §13.2.6.4.4) rather than staying an ordinary template. Defaults to <c>false</c>.
+/// </param>
+/// <remarks>
+/// The Standard gates declarative shadow roots on the document's "allow declarative shadow roots"
+/// flag, which is set by the entry point and not by the markup: navigation and
+/// <c>DOMParser.parseFromString</c> set it, <c>setHTMLUnsafe</c> sets it, and <c>innerHTML</c>
+/// deliberately does not — that is the whole point of the "unsafe" in the other name. This parser
+/// sees none of those contexts, so the caller that does supplies the answer, and the default is the
+/// conservative one: markup of unknown provenance does not silently grow shadow trees.
+/// </remarks>
+public sealed record HtmlParseOptions(bool AllowDeclarativeShadowRoots = false);
 
 /// <summary>
 /// Shared HTML tree builder for the supported WHATWG-aligned subset.
@@ -77,9 +95,36 @@ public sealed class HtmlDocumentParser
     /// late one (no DocumentType). <c>File.ReadAllText</c> and <c>StreamReader</c> strip it;
     /// <c>Encoding.UTF8.GetString</c> does not.
     /// </remarks>
-    public static HtmlDocumentParseResult ParseDocument(string html, DomDocument? document = null)
+    public static HtmlDocumentParseResult ParseDocument(string html, DomDocument? document = null) =>
+        ParseDocument(html, document, null);
+
+    /// <inheritdoc cref="ParseDocument(string, DomDocument)"/>
+    /// <param name="html">The already-decoded input stream.</param>
+    /// <param name="document">The document to build into, or <see langword="null"/> for a new one.</param>
+    /// <param name="options">
+    /// Switches the markup does not answer, such as whether declarative shadow roots are allowed.
+    /// <see langword="null"/> takes the defaults.
+    /// </param>
+    public static HtmlDocumentParseResult ParseDocument(string html, DomDocument? document, HtmlParseOptions? options) =>
+        ParseDocument(html, document, options, declarativeShadowRootFloor: 0);
+
+    /// <param name="declarativeShadowRootFloor">
+    /// How many elements must already be open before a <c>&lt;template shadowrootmode&gt;</c> may
+    /// attach a shadow root — the open-element depth the caller's own markup starts at. HTML
+    /// §13.2.6.4.4 refuses to attach when the adjusted current node is the topmost element in the
+    /// stack of open elements, which keeps the root of a parse from acquiring a shadow root; for a
+    /// document that is the html element, and for a fragment it is the context element, which the
+    /// string wrapper opens before the caller's markup is reached.
+    /// </param>
+    /// <inheritdoc cref="ParseDocument(string, DomDocument, HtmlParseOptions)"/>
+    private static HtmlDocumentParseResult ParseDocument(
+        string html,
+        DomDocument? document,
+        HtmlParseOptions? options,
+        int declarativeShadowRootFloor)
     {
         ArgumentNullException.ThrowIfNull(html);
+        options ??= DefaultOptions;
         document ??= new DomDocument();
         foreach (var child in document.ChildNodes.ToArray())
             document.RemoveChild(child);
@@ -94,6 +139,12 @@ public sealed class HtmlDocumentParser
         var openElements = new Stack<DomElement>();
         openElements.Push(body);
         var diagnostics = new List<HtmlParseDiagnostic>();
+
+        // The template elements whose contents are a declarative shadow root rather than their own
+        // fragment. Parse-local by construction: these templates are never in the tree, so the map
+        // dies with the parse, and a template that reaches a caller always carries its own
+        // TemplateContents.
+        var shadowContents = new Dictionary<DomElement, DomShadowRoot>();
         var title = string.Empty;
         var inTitle = false;
         var bodyOpened = false;
@@ -161,7 +212,7 @@ public sealed class HtmlDocumentParser
                         break;
                     }
 
-                    if (tag.Equals("title", StringComparison.OrdinalIgnoreCase))
+                    if (tag.Equals("title", StringComparison.OrdinalIgnoreCase) && !IsInTemplate(openElements))
                     {
                         inTitle = true;
                         headOpened = true;
@@ -195,10 +246,24 @@ public sealed class HtmlDocumentParser
                         parent = tbody;
                     }
 
-                    if (TableElements.Contains(parent.LocalName) && !TableChildElements.Contains(tag))
-                        parent = FosterParent(openElements, body);
+                    var insertionTarget = TableElements.Contains(parent.LocalName) && !TableChildElements.Contains(tag)
+                        ? FosterParent(openElements, body)
+                        : InsertionPoint(parent, shadowContents);
 
-                    parent.AppendChild(element);
+                    if (options.AllowDeclarativeShadowRoots && !token.SelfClosing &&
+                        openElements.Count > declarativeShadowRootFloor &&
+                        TryAttachDeclarativeShadowRoot(parent, token, diagnostics, out var declarativeShadow))
+                    {
+                        // HTML §13.2.6.4.4 inserts this template into the stack of open elements
+                        // only — never into the tree — and makes its template contents the shadow
+                        // root, so everything up to </template> is parsed straight into the shadow
+                        // tree and the template itself is gone once the end tag pops it.
+                        shadowContents[element] = declarativeShadow;
+                        openElements.Push(element);
+                        break;
+                    }
+
+                    insertionTarget.AppendChild(element);
                     if (!VoidElements.Contains(tag) && !token.SelfClosing)
                         openElements.Push(element);
                     break;
@@ -264,11 +329,12 @@ public sealed class HtmlDocumentParser
                             bodyOpened = true;
                         }
                     }
-                    if (TableElements.Contains(parent.LocalName) && !string.IsNullOrWhiteSpace(token.Data))
-                        parent = FosterParent(openElements, body);
+                    var textTarget = TableElements.Contains(parent.LocalName) && !string.IsNullOrWhiteSpace(token.Data)
+                        ? FosterParent(openElements, body)
+                        : InsertionPoint(parent, shadowContents);
 
                     var text = document.CreateTextNode(token.Data);
-                    if (ReferenceEquals(parent, root))
+                    if (ReferenceEquals(textTarget, root))
                     {
                         // "after head" whitespace goes where the spec's insertion point is — after
                         // the head — but this builder creates the body up front, so appending to
@@ -277,7 +343,7 @@ public sealed class HtmlDocumentParser
                     }
                     else
                     {
-                        parent.AppendChild(text);
+                        textTarget.AppendChild(text);
                     }
                     break;
                 }
@@ -287,7 +353,7 @@ public sealed class HtmlDocumentParser
                     var parent = !bodyOpened && openElements.Count > 0 && ReferenceEquals(openElements.Peek(), body)
                         ? head
                         : openElements.Count > 0 ? openElements.Peek() : body;
-                    parent.AppendChild(document.CreateComment(token.Data ?? string.Empty));
+                    InsertionPoint(parent, shadowContents).AppendChild(document.CreateComment(token.Data ?? string.Empty));
                     break;
                 }
 
@@ -299,20 +365,129 @@ public sealed class HtmlDocumentParser
         return new HtmlDocumentParseResult(document, title.Trim(), diagnostics);
     }
 
-    public static HtmlFragmentParseResult ParseFragment(string html, string contextTagName)
+    public static HtmlFragmentParseResult ParseFragment(string html, string contextTagName) =>
+        ParseFragment(html, contextTagName, null);
+
+    /// <inheritdoc cref="ParseFragment(string, string)"/>
+    /// <param name="html">The fragment's markup.</param>
+    /// <param name="contextTagName">The context element's tag name.</param>
+    /// <param name="options">
+    /// Switches the markup does not answer. Declarative shadow roots belong to
+    /// <c>setHTMLUnsafe</c> on this path and not to <c>innerHTML</c>, so a caller implementing the
+    /// former passes them in and a caller implementing the latter does not.
+    /// </param>
+    public static HtmlFragmentParseResult ParseFragment(string html, string contextTagName, HtmlParseOptions? options)
     {
         ArgumentNullException.ThrowIfNull(html);
         ArgumentException.ThrowIfNullOrWhiteSpace(contextTagName);
         if (VoidElements.Contains(contextTagName))
             return new HtmlFragmentParseResult(new DomDocument().CreateDocumentFragment(), []);
 
-        var wrapper = BuildFragmentDocument(contextTagName.ToLowerInvariant(), html);
-        var result = ParseDocument(wrapper);
+        var (wrapper, contextDepth) = BuildFragmentDocument(contextTagName.ToLowerInvariant(), html);
+        var result = ParseDocument(wrapper, null, options, contextDepth);
         var context = FindContextElement(result.Document, contextTagName) ?? result.Document.Body ?? result.Document.DocumentElement!;
         var fragment = result.Document.CreateDocumentFragment();
-        foreach (var child in context.ChildNodes.ToArray())
+        // A template context parsed the input into the wrapper template's contents, not into its
+        // child list, so that is where the fragment's nodes are.
+        var parsed = context.TemplateContents ?? (DomNode)context;
+        foreach (var child in parsed.ChildNodes.ToArray())
             fragment.AppendChild(child);
         return new HtmlFragmentParseResult(fragment, result.Diagnostics);
+    }
+
+    /// <summary>
+    /// Where a node inserted into <paramref name="parent"/> actually goes (HTML §13.2.6.1, "the
+    /// appropriate place for inserting a node"). A <c>&lt;template&gt;</c> takes no children of its
+    /// own: everything between its tags belongs to its template contents (§4.12.3), so insertions
+    /// are redirected into that fragment — or, for a template that declared a shadow root, into
+    /// the shadow root that became its contents.
+    /// </summary>
+    private static DomNode InsertionPoint(
+        DomElement parent,
+        Dictionary<DomElement, DomShadowRoot> shadowContents) =>
+        shadowContents.TryGetValue(parent, out var shadow)
+            ? shadow
+            : parent.TemplateContents ?? (DomNode)parent;
+
+    private static readonly HtmlParseOptions DefaultOptions = new();
+
+    /// <summary>
+    /// Attribute values that put <c>shadowrootmode</c> in a state other than "none", and the
+    /// encapsulation mode each one asks for (HTML §4.12.3).
+    /// </summary>
+    private static readonly Dictionary<string, DomShadowRootMode> ShadowRootModes =
+        new(StringComparer.OrdinalIgnoreCase)
+        {
+            ["open"] = DomShadowRootMode.Open,
+            ["closed"] = DomShadowRootMode.Closed,
+        };
+
+    /// <summary>
+    /// Attaches a shadow root to <paramref name="intendedParent"/> when <paramref name="token"/> is
+    /// a <c>&lt;template&gt;</c> start tag declaring one (HTML §13.2.6.4.4, the "in head" insertion
+    /// mode's template start tag), and reports it as the template's contents.
+    /// </summary>
+    /// <remarks>
+    /// All four <c>shadowroot*</c> attributes are read, not just the mode: the other three are the
+    /// options <c>attachShadow</c> takes, and an author who wrote them meant them. The three
+    /// besides the mode are HTML boolean attributes, so presence is the value.
+    /// <para>
+    /// Attaching can legitimately fail — the intended parent may be an element that hosts no shadow
+    /// tree, or may already host one, which is how the Standard makes only the first declarative
+    /// shadow root on a host win. Both are parse errors and neither is fatal: the template stays an
+    /// ordinary, inert template and a diagnostic records why, because a document is not worth
+    /// refusing over one template a browser would simply leave alone.
+    /// </para>
+    /// </remarks>
+    private static bool TryAttachDeclarativeShadowRoot(
+        DomElement intendedParent,
+        HtmlToken token,
+        List<HtmlParseDiagnostic> diagnostics,
+        [NotNullWhen(true)] out DomShadowRoot? shadowRoot)
+    {
+        shadowRoot = null;
+        if (!string.Equals(token.Name, "template", StringComparison.OrdinalIgnoreCase) ||
+            !token.Attributes.TryGetValue("shadowrootmode", out var declaredMode) ||
+            !ShadowRootModes.TryGetValue(declaredMode?.Trim() ?? string.Empty, out var mode))
+        {
+            return false;
+        }
+
+        try
+        {
+            shadowRoot = intendedParent.AttachShadow(
+                mode,
+                delegatesFocus: token.Attributes.ContainsKey("shadowrootdelegatesfocus"),
+                slotAssignment: DomSlotAssignmentMode.Named,
+                clonable: token.Attributes.ContainsKey("shadowrootclonable"),
+                serializable: token.Attributes.ContainsKey("shadowrootserializable"));
+            return true;
+        }
+        catch (DomException exception)
+        {
+            diagnostics.Add(new HtmlParseDiagnostic(
+                $"A <template shadowrootmode=\"{declaredMode}\"> inside <{intendedParent.LocalName}> " +
+                $"stays an ordinary template: {exception.Message}"));
+            return false;
+        }
+    }
+
+    /// <summary>Whether any element still open is a <c>&lt;template&gt;</c>.</summary>
+    /// <remarks>
+    /// Asked only by the branches that answer "where does this go" with the document's head rather
+    /// than the current insertion point. Inside a template those would pull content back out of the
+    /// inert fragment the Standard just put it in — and, for a <c>&lt;title&gt;</c>, make markup
+    /// that renders nothing the document's title.
+    /// </remarks>
+    private static bool IsInTemplate(Stack<DomElement> openElements)
+    {
+        foreach (var element in openElements)
+        {
+            if (element.LocalName.Equals("template", StringComparison.OrdinalIgnoreCase))
+                return true;
+        }
+
+        return false;
     }
 
     private static DomElement CreateElement(DomDocument document, HtmlToken token)
@@ -383,12 +558,22 @@ public sealed class HtmlDocumentParser
         }
     }
 
-    private static DomElement FosterParent(Stack<DomElement> openElements, DomElement body)
+    /// <remarks>
+    /// HTML §13.2.6.1 fosters into the last table's <em>parent node</em>, which need not be an
+    /// element: a table written inside a <c>&lt;template&gt;</c> hangs off the contents fragment,
+    /// and one inside a declarative shadow root hangs off the shadow root. Narrowing the parent to
+    /// <see cref="DomElement"/> turned both into the fallback, so
+    /// <c>&lt;template&gt;&lt;table&gt;&lt;div&gt;</c> put the div in the body — markup the
+    /// template model exists to keep inert, back in the document tree where every query here sees
+    /// it again. The reverse case, a template <em>below</em> the table, needs nothing: a template
+    /// is then the current node, which is not a table, so nothing is fostered at all.
+    /// </remarks>
+    private static DomNode FosterParent(Stack<DomElement> openElements, DomElement body)
     {
         foreach (var element in openElements)
         {
             if (element.LocalName.Equals("table", StringComparison.OrdinalIgnoreCase))
-                return element.ParentNode as DomElement ?? body;
+                return element.ParentNode ?? body;
         }
         return body;
     }
@@ -400,8 +585,9 @@ public sealed class HtmlDocumentParser
             .FirstOrDefault(element => element.LocalName.Equals(contextTagName, StringComparison.OrdinalIgnoreCase));
 
     /// <remarks>
-    /// Every wrapper opens with <c>&lt;html&gt;</c>, a start tag, which takes <see cref="ParseDocument"/>
-    /// out of the "initial" insertion mode before the caller's markup is reached. That is what the
+    /// Every wrapper opens with <c>&lt;html&gt;</c>, a start tag, which takes
+    /// <see cref="ParseDocument(string, DomDocument)"/> out of the "initial" insertion mode before
+    /// the caller's markup is reached. That is what the
     /// HTML fragment parsing algorithm does too — it resets the insertion mode from the context
     /// element and never starts in "initial" — so a DOCTYPE in fragment input creates no node, not
     /// even in the synthetic document. A new wrapper must keep a start tag ahead of the input.
@@ -424,19 +610,27 @@ public sealed class HtmlDocumentParser
     /// parser seeded from the context rather than a string wrapper (roadmap D6).
     /// </para>
     /// </remarks>
-    private static string BuildFragmentDocument(string contextTag, string html) => contextTag switch
+    /// <returns>
+    /// The wrapper document, and how many elements the prefix leaves open when the caller's markup
+    /// is reached — the body this builder pushes up front, plus each element the prefix opens.
+    /// <c>html</c>, <c>head</c> and <c>body</c> start tags open nothing: those three elements exist
+    /// from the start of every parse, so their tags only carry attributes across. The count is what
+    /// tells the tree builder where the caller's markup begins, which is the only thing that
+    /// distinguishes the context element from an element the input opened itself.
+    /// </returns>
+    private static (string Wrapper, int ContextDepth) BuildFragmentDocument(string contextTag, string html) => contextTag switch
     {
-        "html" => $"<html>{html}",
-        "head" => $"<html><head>{html}",
-        "body" => $"<html><head></head><body>{html}",
-        "table" => $"<html><head></head><body><table>{html}",
-        "thead" or "tbody" or "tfoot" => $"<html><head></head><body><table><{contextTag}>{html}",
-        "tr" => $"<html><head></head><body><table><tbody><tr>{html}",
-        "td" or "th" => $"<html><head></head><body><table><tbody><tr><{contextTag}>{html}",
-        "colgroup" => $"<html><head></head><body><table><colgroup>{html}",
-        "caption" => $"<html><head></head><body><table><caption>{html}",
-        "select" => $"<html><head></head><body><select>{html}",
-        "template" => $"<html><head></head><body><template>{html}",
-        _ => $"<html><head></head><body><{contextTag}>{html}"
+        "html" => ($"<html>{html}", 1),
+        "head" => ($"<html><head>{html}", 1),
+        "body" => ($"<html><head></head><body>{html}", 1),
+        "table" => ($"<html><head></head><body><table>{html}", 2),
+        "thead" or "tbody" or "tfoot" => ($"<html><head></head><body><table><{contextTag}>{html}", 3),
+        "tr" => ($"<html><head></head><body><table><tbody><tr>{html}", 4),
+        "td" or "th" => ($"<html><head></head><body><table><tbody><tr><{contextTag}>{html}", 5),
+        "colgroup" => ($"<html><head></head><body><table><colgroup>{html}", 3),
+        "caption" => ($"<html><head></head><body><table><caption>{html}", 3),
+        "select" => ($"<html><head></head><body><select>{html}", 2),
+        "template" => ($"<html><head></head><body><template>{html}", 2),
+        _ => ($"<html><head></head><body><{contextTag}>{html}", 2)
     };
 }

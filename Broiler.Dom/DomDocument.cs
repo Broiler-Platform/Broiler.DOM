@@ -66,6 +66,7 @@ public sealed class DomDocument : DomNode
         {
             foreach (var child in node.ChildNodes)
                 clone.AppendChild(ImportNode(child, true));
+            DomNode.CopyTemplateContents(node, clone, child => ImportNode(child, true));
         }
 
         return clone;
@@ -132,13 +133,28 @@ public sealed class DomDocument : DomNode
             UpdateElementId(element, element.Id, null);
     }
 
+    /// <summary>
+    /// Returns the element in this document's tree whose id is <paramref name="id"/>, in tree
+    /// order, or <see langword="null"/> (DOM <c>getElementById</c>).
+    /// </summary>
+    /// <remarks>
+    /// The index behind this is keyed by shadow-including connectedness, because that is what
+    /// decides when an id is added and removed, so it also holds elements inside a shadow tree.
+    /// <c>getElementById</c> searches this document's own descendants, which a shadow tree is not
+    /// one of — hence the root check on the single-candidate path, where the tree walk that the
+    /// ambiguous path takes would already have answered correctly. The two used to disagree: with
+    /// one element carrying an id the encapsulated one came back, with two it did not.
+    /// </remarks>
     public DomElement? GetElementById(string id)
     {
         if (!_elementsById.TryGetValue(id, out var candidates) || candidates.Count == 0)
             return null;
 
         if (candidates.Count == 1)
-            return candidates.First();
+        {
+            var only = candidates.First();
+            return ReferenceEquals(only.GetRootNode(), this) ? only : null;
+        }
 
         return Descendants().OfType<DomElement>().FirstOrDefault(candidates.Contains);
     }

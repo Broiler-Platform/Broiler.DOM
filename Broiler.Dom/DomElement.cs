@@ -19,7 +19,32 @@ public class DomElement : DomNode
     {
         Name = name;
         _readOnlyAttributes = _attributes.AsReadOnly();
+        TemplateContents = IsHtmlTemplateName(name) ? new DomDocumentFragment(ownerDocument) : null;
     }
+
+    /// <summary>
+    /// An HTML <c>&lt;template&gt;</c> element's <em>template contents</em> (HTML §4.12.3): the
+    /// <see cref="DomDocumentFragment"/> holding what was written between its tags. Null for every
+    /// other element, and deliberately absent from <see cref="DomNode.ChildNodes"/> — a template's
+    /// contents are inert, so no walk over the document tree reaches them.
+    /// </summary>
+    /// <remarks>
+    /// Created with the element, not on demand: the HTML tree builder needs somewhere to redirect
+    /// insertions the moment the start tag is seen (§13.2.6.1), and the fragment's identity is
+    /// observable, so asking a template for its contents twice must give the same node.
+    /// <para>
+    /// This is the second HTML detail the kernel carries by name, beside the host element list in
+    /// <see cref="AttachShadow"/>, and for the same reason: it is part of a node's data model, not a
+    /// projection over it. Kept outside, as a table keyed on the element beside the tree, it could
+    /// not travel with the node — and every query in the layers above would still be walking into
+    /// markup the Standard calls inert, each needing its own template guard.
+    /// </para>
+    /// </remarks>
+    public DomDocumentFragment? TemplateContents { get; }
+
+    private static bool IsHtmlTemplateName(DomName name) =>
+        string.Equals(name.NamespaceUri, DomNamespaces.Html, StringComparison.Ordinal) &&
+        string.Equals(name.LocalName, "template", StringComparison.Ordinal);
 
     public DomName Name { get; private set; }
 
@@ -288,7 +313,9 @@ public class DomElement : DomNode
     public DomShadowRoot AttachShadow(
         DomShadowRootMode mode,
         bool delegatesFocus = false,
-        DomSlotAssignmentMode slotAssignment = DomSlotAssignmentMode.Named)
+        DomSlotAssignmentMode slotAssignment = DomSlotAssignmentMode.Named,
+        bool clonable = false,
+        bool serializable = false)
     {
         if (!AllowedShadowHostTags.Contains(LocalName) && !DomNameValidation.IsValidCustomElementName(LocalName))
         {
@@ -302,7 +329,7 @@ public class DomElement : DomNode
                 "Failed to execute 'attachShadow' on 'Element': Shadow root cannot be created on a host which already hosts a shadow tree.");
         }
 
-        var shadowRoot = new DomShadowRoot(this, mode, delegatesFocus, slotAssignment);
+        var shadowRoot = new DomShadowRoot(this, mode, delegatesFocus, slotAssignment, clonable, serializable);
         _shadowRoot = shadowRoot;
         return shadowRoot;
     }

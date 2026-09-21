@@ -112,8 +112,7 @@ public sealed class DomClaimGuardTests
         string[] committed = Directory
             .EnumerateFiles(root, "*", SearchOption.AllDirectories)
             .Where(path => !IsBuildOutput(path))
-            .Where(path => !path.Contains(
-                $"{Path.DirectorySeparatorChar}.git{Path.DirectorySeparatorChar}", StringComparison.Ordinal))
+            .Where(path => !IsToolingDirectory(path))
             .Where(path => extensions.Contains(Path.GetExtension(path), StringComparer.OrdinalIgnoreCase))
             .Select(path => Path.GetRelativePath(root, path))
             .Order(StringComparer.Ordinal)
@@ -144,6 +143,21 @@ public sealed class DomClaimGuardTests
     private static bool IsBuildOutput(string path) =>
         path.Split(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)
             .Any(segment => segment is "bin" or "obj");
+
+    /// <summary>
+    /// Whether <paramref name="path"/> sits in a directory the version control system or the IDE
+    /// owns rather than the repository.
+    /// </summary>
+    /// <remarks>
+    /// Nothing in either is tracked, so a file found there says nothing about what was committed —
+    /// which is the whole question these guards ask. <c>.git</c> was already skipped; Visual Studio
+    /// writes <c>.vs/&lt;solution&gt;/v18/DocumentLayout.json</c>, which the extension scan above
+    /// read as a vendored conformance fixture and failed on, on every machine that had opened the
+    /// solution and nowhere else.
+    /// </remarks>
+    private static bool IsToolingDirectory(string path) =>
+        path.Split(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)
+            .Any(segment => segment is ".git" or ".vs");
 
     /// <summary>
     /// The Broiler.DOM repository root: the directory owning

@@ -156,10 +156,21 @@ public static class HtmlMetaScanner
         return true;
     }
 
+    /// <remarks>
+    /// Two shapes of shadow root reach this. <see cref="DomShadowRoot"/> is the canonical one, which
+    /// the HTML parser now produces for <c>&lt;template shadowrootmode&gt;</c>; the
+    /// <c>#shadow-root</c> element is the synthetic sentinel a compatibility layer puts in the tree
+    /// in its place. A scan rooted at the document reaches neither — a shadow root is not a child of
+    /// its host — but one rooted inside a shadow tree walks up into it, and that is the case
+    /// HTML §4.2.5.3 is about.
+    /// </remarks>
     private static bool IsInShadowTree(DomNode node)
     {
         for (var current = node.ParentNode; current != null; current = current.ParentNode)
         {
+            if (current is DomShadowRoot)
+                return true;
+
             if (current is DomElement el && string.Equals(el.TagName, "#shadow-root", StringComparison.Ordinal))
                 return true;
         }

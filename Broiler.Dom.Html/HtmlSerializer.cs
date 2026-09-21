@@ -243,7 +243,13 @@ public static class HtmlSerializer
             DomDocumentType doctype => doctype.Name,
             _ => string.Empty
         },
-        GetChildren: static node => node.ChildNodes,
+        // A template serializes its template contents (HTML §13.3): those are the nodes that were
+        // written between its tags. Reading ChildNodes here would round-trip every parsed <template>
+        // as an empty one. The converse is the part worth knowing: a template assembled through the
+        // node API keeps its children on the element, and those are not what comes back out.
+        GetChildren: static node => node is DomElement { TemplateContents: { } contents }
+            ? contents.ChildNodes
+            : node.ChildNodes,
         GetAttributes: static node => node is DomElement element
             ? element.Attributes.Values.Select(static attribute =>
                 new KeyValuePair<string, string>(attribute.QualifiedName, attribute.Value))

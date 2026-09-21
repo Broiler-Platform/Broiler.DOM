@@ -18,6 +18,13 @@ public static class HtmlDocumentQueries
     /// first <c>&lt;base&gt;</c> element in tree order that carries a non-whitespace value, trimmed.
     /// Returns <see langword="null"/> if none is found (HTML §4.2.3).
     /// </summary>
+    /// <remarks>
+    /// This agrees with the <see cref="GetEffectiveBaseHref(string)"/> overload about a
+    /// <c>&lt;base&gt;</c> inside a <c>&lt;template&gt;</c> without a guard of its own: the parser
+    /// puts template children in the template's contents fragment (HTML §4.12.3), which is not in
+    /// the tree, so a descendant walk never reaches one. The token overload cannot rely on that —
+    /// it never builds a tree — which is why it counts template depth itself.
+    /// </remarks>
     public static string? GetEffectiveBaseHref(DomNode root)
     {
         ArgumentNullException.ThrowIfNull(root);
