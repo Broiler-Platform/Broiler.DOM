@@ -313,7 +313,9 @@ public class DomElement : DomNode
     public DomShadowRoot AttachShadow(
         DomShadowRootMode mode,
         bool delegatesFocus = false,
-        DomSlotAssignmentMode slotAssignment = DomSlotAssignmentMode.Named)
+        DomSlotAssignmentMode slotAssignment = DomSlotAssignmentMode.Named,
+        bool clonable = false,
+        bool serializable = false)
     {
         if (!AllowedShadowHostTags.Contains(LocalName) && !DomNameValidation.IsValidCustomElementName(LocalName))
         {
@@ -327,7 +329,7 @@ public class DomElement : DomNode
                 "Failed to execute 'attachShadow' on 'Element': Shadow root cannot be created on a host which already hosts a shadow tree.");
         }
 
-        var shadowRoot = new DomShadowRoot(this, mode, delegatesFocus, slotAssignment);
+        var shadowRoot = new DomShadowRoot(this, mode, delegatesFocus, slotAssignment, clonable, serializable);
         _shadowRoot = shadowRoot;
         return shadowRoot;
     }

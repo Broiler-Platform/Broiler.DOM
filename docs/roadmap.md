@@ -374,12 +374,23 @@ match the recorded baseline, and the binding keeps only IDL plumbing and convers
 **Owner:** `Broiler.Dom`, coordinated with `Broiler.CSS.Dom`, `Broiler.HTML.Dom`, and
 Layout through Phase 3 of the aggregate repository's root roadmap.
 
-**Current evidence:** there is no shadow model here at all. The bridge represents a shadow
-root as a synthetic `#shadow-root` element, and rendering hides light children, unwraps
-the sentinel, and rewrites selectors onto marker attributes (`DomBridge/ShadowDom.cs`,
-`ShadowHostSelectors.cs`, `ShadowSlotRendering.cs`). This is the largest blocked item and
-the one where promoting the current shape would do real harm: it would make the
-workaround permanent.
+**Current evidence:** the model landed in a5afd51 — `DomShadowRoot`, `DomElement.AttachShadow`
+and `ShadowRoot`, slot assignment and composed traversal — so the line this section used to
+open with, that there is no shadow model here at all, is out of date. What remains is the
+consumer side and the part of the model the consumers reach it through. The bridge still
+represents a shadow root as a synthetic `#shadow-root` element, and rendering hides light
+children, unwraps the sentinel, and rewrites selectors onto marker attributes
+(`DomBridge/ShadowDom.cs`, `ShadowHostSelectors.cs`, `ShadowSlotRendering.cs`). Promoting
+that shape would still do real harm: it would make the workaround permanent.
+
+The parser half is now here too. `HtmlDocumentParser` attaches a declarative shadow root for
+`<template shadowrootmode>` during tree construction (HTML §13.2.6.4.4), reading all four
+`shadowroot*` attributes, gated on `HtmlParseOptions.AllowDeclarativeShadowRoots` as the
+Standard gates it on the document's "allow declarative shadow roots" flag — off by default,
+and on the fragment path meant for `setHTMLUnsafe` rather than `innerHTML`. The bridge's
+`AttachDeclarativeShadowRoots`/`TryTakeDeclarativeShadowRoot` post-parse pass
+(`DomBridge/HtmlParsing.cs`) is what this replaces; it reads `shadowrootmode` only, which is
+the drift a hand-rolled second implementation invites. Retiring it is the bridge's follow-up.
 
 **API:**
 
@@ -392,12 +403,18 @@ workaround permanent.
 
 **Next actions:**
 
-1. Add the model and traversal with no rendering or selector concern, and test it against
-   the cases the synthetic root currently encodes: closed versus open mode, nested shadow
-   roots, default and named slots, fallback content, and slot reassignment on mutation.
+1. ~~Add the model and traversal with no rendering or selector concern~~ — done in a5afd51,
+   tested against the cases the synthetic root encodes: closed versus open mode, nested
+   shadow roots, default and named slots, fallback content, and slot reassignment on
+   mutation. The declarative parser path followed.
 2. Coordinate the consumer cutover through that Phase 3. Scoped selector matching is
    `Broiler.CSS` work and composed-tree painting is `Broiler.HTML`/Layout work; neither
    belongs in this component.
+3. Decide what a shadow root's `Clonable` and `Serializable` are for here. The parser
+   records both from the markup, and nothing reads them: cloning a host does not carry its
+   shadow tree (`DomShadowRoot.CloneShallow` refuses), and `HtmlSerializer` walks the light
+   tree only. Cloning steps and `getHTML` are the two pieces of behaviour that would give
+   them meaning, and both are still open.
 
 **Exit gate:** the canonical model expresses every case the bridge sentinel does, with
 owner-local tests. Deleting the bridge's selector stamping, marker attributes, and

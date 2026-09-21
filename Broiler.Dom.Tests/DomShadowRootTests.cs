@@ -183,4 +183,26 @@ public class DomShadowRootTests
         Assert.Single(defaultAssigned);
         Assert.Same(bodyChild, defaultAssigned[0]);
     }
+
+    [Fact]
+    public void GetElementById_Does_Not_Cross_Into_A_Shadow_Tree()
+    {
+        var doc = new DomDocument();
+        var host = doc.CreateElement("div");
+        doc.AppendChild(host);
+
+        var encapsulated = doc.CreateElement("span");
+        encapsulated.Id = "widget";
+        host.AttachShadow(DomShadowRootMode.Open).AppendChild(encapsulated);
+
+        Assert.Null(doc.GetElementById("widget"));
+
+        // The same answer whether or not a second element makes the id ambiguous: the two paths
+        // through the id index used to disagree about encapsulated elements.
+        var inDocument = doc.CreateElement("p");
+        inDocument.Id = "widget";
+        host.AppendChild(inDocument);
+
+        Assert.Same(inDocument, doc.GetElementById("widget"));
+    }
 }
