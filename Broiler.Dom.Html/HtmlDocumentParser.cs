@@ -161,7 +161,7 @@ public sealed class HtmlDocumentParser
                         break;
                     }
 
-                    if (tag.Equals("title", StringComparison.OrdinalIgnoreCase))
+                    if (tag.Equals("title", StringComparison.OrdinalIgnoreCase) && !IsInTemplate(openElements))
                     {
                         inTitle = true;
                         headOpened = true;
@@ -198,7 +198,7 @@ public sealed class HtmlDocumentParser
                     if (TableElements.Contains(parent.LocalName) && !TableChildElements.Contains(tag))
                         parent = FosterParent(openElements, body);
 
-                    parent.AppendChild(element);
+                    InsertionPoint(parent).AppendChild(element);
                     if (!VoidElements.Contains(tag) && !token.SelfClosing)
                         openElements.Push(element);
                     break;
@@ -277,7 +277,7 @@ public sealed class HtmlDocumentParser
                     }
                     else
                     {
-                        parent.AppendChild(text);
+                        InsertionPoint(parent).AppendChild(text);
                     }
                     break;
                 }
@@ -287,7 +287,7 @@ public sealed class HtmlDocumentParser
                     var parent = !bodyOpened && openElements.Count > 0 && ReferenceEquals(openElements.Peek(), body)
                         ? head
                         : openElements.Count > 0 ? openElements.Peek() : body;
-                    parent.AppendChild(document.CreateComment(token.Data ?? string.Empty));
+                    InsertionPoint(parent).AppendChild(document.CreateComment(token.Data ?? string.Empty));
                     break;
                 }
 
@@ -310,9 +310,37 @@ public sealed class HtmlDocumentParser
         var result = ParseDocument(wrapper);
         var context = FindContextElement(result.Document, contextTagName) ?? result.Document.Body ?? result.Document.DocumentElement!;
         var fragment = result.Document.CreateDocumentFragment();
-        foreach (var child in context.ChildNodes.ToArray())
+        // A template context parsed the input into the wrapper template's contents, not into its
+        // child list, so that is where the fragment's nodes are.
+        foreach (var child in InsertionPoint(context).ChildNodes.ToArray())
             fragment.AppendChild(child);
         return new HtmlFragmentParseResult(fragment, result.Diagnostics);
+    }
+
+    /// <summary>
+    /// Where a node inserted into <paramref name="parent"/> actually goes (HTML §13.2.6.1, "the
+    /// appropriate place for inserting a node"). A <c>&lt;template&gt;</c> takes no children of its
+    /// own: everything between its tags belongs to its template contents (§4.12.3), so insertions
+    /// are redirected into that fragment.
+    /// </summary>
+    private static DomNode InsertionPoint(DomElement parent) => parent.TemplateContents ?? (DomNode)parent;
+
+    /// <summary>Whether any element still open is a <c>&lt;template&gt;</c>.</summary>
+    /// <remarks>
+    /// Asked only by the branches that answer "where does this go" with the document's head rather
+    /// than the current insertion point. Inside a template those would pull content back out of the
+    /// inert fragment the Standard just put it in — and, for a <c>&lt;title&gt;</c>, make markup
+    /// that renders nothing the document's title.
+    /// </remarks>
+    private static bool IsInTemplate(Stack<DomElement> openElements)
+    {
+        foreach (var element in openElements)
+        {
+            if (element.LocalName.Equals("template", StringComparison.OrdinalIgnoreCase))
+                return true;
+        }
+
+        return false;
     }
 
     private static DomElement CreateElement(DomDocument document, HtmlToken token)

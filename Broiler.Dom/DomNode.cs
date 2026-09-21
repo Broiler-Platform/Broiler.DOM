@@ -379,9 +379,33 @@ public abstract partial class DomNode
         {
             foreach (var child in _children)
                 clone.AppendChild(child.CloneNode(true));
+            CopyTemplateContents(this, clone, static child => child.CloneNode(true));
         }
 
         return clone;
+    }
+
+    /// <summary>
+    /// Copies a template's contents (HTML §4.12.3's cloning steps) from <paramref name="source"/>
+    /// onto <paramref name="clone"/>, using <paramref name="copyChild"/> to produce each copy.
+    /// Does nothing when either node is not an HTML <c>&lt;template&gt;</c>.
+    /// </summary>
+    /// <remarks>
+    /// Template contents are not children, so the deep-copy child walks in <see cref="CloneNode"/>
+    /// and <see cref="DomDocument.ImportNode"/> do not reach them on their own, and a copy that
+    /// skipped them would hand back an empty template. The two differ only in how a child is
+    /// copied — cloned into the same document, or imported into another — which is the parameter.
+    /// </remarks>
+    internal static void CopyTemplateContents(DomNode source, DomNode clone, Func<DomNode, DomNode> copyChild)
+    {
+        if (source is not DomElement { TemplateContents: { } contents } ||
+            clone is not DomElement { TemplateContents: { } target })
+        {
+            return;
+        }
+
+        foreach (var child in contents.ChildNodes)
+            target.AppendChild(copyChild(child));
     }
 
     /// <summary>

@@ -66,6 +66,7 @@ public sealed class DomDocument : DomNode
         {
             foreach (var child in node.ChildNodes)
                 clone.AppendChild(ImportNode(child, true));
+            DomNode.CopyTemplateContents(node, clone, child => ImportNode(child, true));
         }
 
         return clone;

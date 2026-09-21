@@ -243,7 +243,12 @@ public static class HtmlSerializer
             DomDocumentType doctype => doctype.Name,
             _ => string.Empty
         },
-        GetChildren: static node => node.ChildNodes,
+        // A template serializes its template contents (HTML §13.3): those are the nodes that were
+        // written between its tags, and its own child list is empty by construction. Reading
+        // ChildNodes here would round-trip every <template> as an empty one.
+        GetChildren: static node => node is DomElement { TemplateContents: { } contents }
+            ? contents.ChildNodes
+            : node.ChildNodes,
         GetAttributes: static node => node is DomElement element
             ? element.Attributes.Values.Select(static attribute =>
                 new KeyValuePair<string, string>(attribute.QualifiedName, attribute.Value))

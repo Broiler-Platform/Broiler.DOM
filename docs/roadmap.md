@@ -296,6 +296,21 @@ fix once the package is bumped.
   tag ahead of the input, not a string wrapper. That is D6's fragment-context work;
   `TryGetFragmentParsingContext`, which only resolves a context tag name, does not remove
   it on its own.
+- A `<template>`'s children are now its *template contents* (HTML §4.12.3): a separate
+  `DomDocumentFragment`, reachable as `DomElement.TemplateContents`, that the tree builder
+  inserts into per §13.2.6.1 and that is not in the element's child list. Every walk over a
+  parsed document therefore stops at a template, which is what the Standard means by inert.
+  `DomDocument.GetElementById` and `GetElementsByTagName` no longer answer with a node from
+  inside one, `HtmlMetaScanner.FindMetaColorScheme` no longer honours a
+  `<meta name=color-scheme>` written there, `HtmlFormQueries.GetFormElements` no longer lists
+  controls from one, and the two `GetEffectiveBaseHref` overloads agree — the DOM-tree one now
+  gets the rule from the model, and only the token scan, which builds no tree, still counts
+  template depth itself. A `<title>` inside a template is no longer the document's title.
+  Serialization reads the contents fragment, so `<template>` round-trips unchanged, and
+  `cloneNode(deep)` and `importNode(deep)` copy the contents, which no child walk reaches.
+  This is not opt-in: it is what the tree should always have been, and the bridge's
+  `DivertTemplateContents` pass (`DomBridge/HtmlParsing.cs`) exists only because it was not.
+  Removing that pass is the bridge's follow-up.
 
 **API:**
 
