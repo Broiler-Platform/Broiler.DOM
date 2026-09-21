@@ -151,6 +151,45 @@ public sealed class HtmlTemplateContentsTests
         Assert.Equal("<template><li>row</li></template>", HtmlSerializer.Serialize(template));
     }
 
+    /// <summary>
+    /// A template assembled through the node API, rather than by parsing, keeps whatever is appended
+    /// to it in its own child list — and that list is not what it serializes. §13.3 says to serialize
+    /// the template's <em>contents</em>, so children put on the element itself are invisible to
+    /// <see cref="HtmlSerializer"/>. That surprises anyone who builds a template by hand, which is why
+    /// it is pinned here rather than left to be discovered.
+    /// </summary>
+    [Fact(Timeout = 600000)]
+    public void A_Hand_Built_Templates_Own_Children_Are_Not_What_It_Serializes()
+    {
+        var document = new DomDocument();
+        var template = document.CreateElement("template");
+        template.AppendChild(document.CreateTextNode("appended"));
+
+        // The node API did what it was asked: the child is on the element.
+        Assert.Single(template.ChildNodes);
+        Assert.Empty(template.TemplateContents!.ChildNodes);
+
+        // Serialization reads the contents, which nothing has written to.
+        Assert.Equal("<template></template>", HtmlSerializer.Serialize(template));
+    }
+
+    /// <summary>
+    /// The same rule seen from the other side: assigning <c>TextContent</c> replaces the element's
+    /// children and leaves the contents alone, so a parsed template keeps serializing what it was
+    /// parsed with. The assignment is not lost — it is simply not the thing that round-trips.
+    /// </summary>
+    [Fact(Timeout = 600000)]
+    public void Setting_TextContent_On_A_Template_Does_Not_Change_What_It_Serializes()
+    {
+        var result = HtmlDocumentParser.ParseDocument("<body><template><li>row</li></template></body>");
+        var template = result.Document.Body!.ChildNodes.OfType<DomElement>().Single();
+
+        template.TextContent = "replaced";
+
+        Assert.Equal("replaced", string.Concat(template.ChildNodes.Select(static node => node.TextContent)));
+        Assert.Equal("<template><li>row</li></template>", HtmlSerializer.Serialize(template));
+    }
+
     [Fact(Timeout = 600000)]
     public void Template_Markup_Round_Trips_Through_Parse_And_Serialize()
     {
