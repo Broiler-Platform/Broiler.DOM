@@ -28,6 +28,8 @@ try {
         }
     )
     if (!$packages.Count) { throw 'No packable projects found.' }
+    # README.md is also the package page on NuGet.org, which cannot resolve repository-relative links.
+    if ((Get-Content -Raw README.md) -match '\]\((?!https?:|#)[^)]+\)') { throw "README.md must use absolute links: $($Matches[0])" }
     if (@($packages.Metadata.PackageVersion | Select-Object -Unique).Count -ne 1) { throw 'Package versions must agree.' }
     if (@($packages.Metadata.PackageId | Select-Object -Unique).Count -ne $packages.Count) { throw 'Duplicate package IDs.' }
     $outputPath = [IO.Path]::GetFullPath([IO.Path]::Combine((Get-Location).Path, $Output))

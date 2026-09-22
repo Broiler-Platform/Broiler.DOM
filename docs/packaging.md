@@ -24,7 +24,8 @@ the host's platform suite explicitly because those projects are excluded from th
 normal solution build. DOM uses `dotnet test`; the other components use console runners.
 
 `eng/pack.ps1` enumerates **every packable project**, including excluded providers,
-and verifies all 2 packages, versions, internal dependencies, README, icon,
+and verifies all 2 packages, versions, internal dependencies, README (which must use
+absolute links, because it is also the NuGet.org package page), icon,
 assemblies, API documentation, and symbols. Tests, demos, and diagnostic tools do
 not ship. Use Windows to pack the complete set. The output directory must contain
 no previous packages; choose `-Output <empty-directory>` for another run. Optional
@@ -69,13 +70,17 @@ pwsh -File eng/verify-feed.ps1 -Target github -Packages artifacts
 ```
 
 Leave `version-suffix` empty to select the next unused `preview.N`. The resolver
-checks every shipping package on NuGet.org and, for GitHub publishes, GitHub Packages.
+checks every shipping package on **both** NuGet.org and GitHub Packages, whichever
+feed is the target, so the two feeds share one cumulative sequence: with `preview.3`
+on GitHub Packages and `preview.2` on NuGet.org, the next publish to either feed is
+`preview.4`. A version number therefore never names two different builds. The lookup
+needs `GITHUB_TOKEN` with `packages: read`, which the workflow grants.
 The configured preview is the minimum; a partially published preview is skipped.
 An explicit suffix must be unused and at least the computed next preview. Feed
 errors stop the run. Publish runs are serialized within each repository.
 
 A tag `v0.1.0-preview.N` publishes that exact version to NuGet.org after the same
-checks. Only `X.Y.Z-preview.N` versions on the configured release line are accepted;
+checks, so it too must be above every preview on either feed. Only `X.Y.Z-preview.N` versions on the configured release line are accepted;
 stable and other prerelease formats are rejected. After a partial upload, use a
 new preview rather than reusing the old tag. Dry runs do not reserve a version.
 

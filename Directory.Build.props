@@ -6,6 +6,7 @@
   <!-- Repository-owned packaging overrides. -->
   <PropertyGroup>
     <PackageProjectUrl>https://github.com/Broiler-Platform/Broiler.DOM</PackageProjectUrl>
+    <PackageTags>broiler;dom;html;html-parser;tokenizer;serializer;whatwg</PackageTags>
   </PropertyGroup>
 
 </Project>

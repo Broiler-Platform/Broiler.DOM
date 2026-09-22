@@ -79,6 +79,24 @@ function readPackages() {
   return packages;
 }
 
+export const NUGET_ORG = 'https://api.nuget.org/v3/index.json';
+
+// Both feeds share one preview sequence, whichever feed this run publishes to.
+// Otherwise preview.3 on GitHub Packages and preview.2 on NuGet.org would send the
+// next NuGet.org publish to preview.3: the same version number, different bits.
+export async function readPublishedVersions(packageIds, env, fetchImpl = fetch) {
+  const { GITHUB_REPOSITORY_OWNER: owner, GITHUB_ACTOR: actor, GITHUB_TOKEN: token } = env;
+  if (!owner || !actor || !token) {
+    throw new Error('Version lookup reads GitHub Packages too and requires GITHUB_REPOSITORY_OWNER, GITHUB_ACTOR, and GITHUB_TOKEN.');
+  }
+  const authorization = `Basic ${Buffer.from(`${actor}:${token}`).toString('base64')}`;
+  const [nuget, github] = await Promise.all([
+    readVersions(NUGET_ORG, packageIds, {}, fetchImpl),
+    readVersions(`https://nuget.pkg.github.com/${owner}/index.json`, packageIds, { authorization }, fetchImpl),
+  ]);
+  return [...nuget, ...github];
+}
+
 async function main() {
   const packages = readPackages();
   const configured = packages[0].PackageVersion;
@@ -86,15 +104,7 @@ async function main() {
   const packageIds = packages.map(p => p.PackageId);
   const target = process.env.TARGET || 'nuget';
   if (!['nuget', 'github'].includes(target)) throw new Error(`Unknown target '${target}'.`);
-  // NuGet.org is the baseline even when publishing to GitHub Packages.
-  const published = await readVersions('https://api.nuget.org/v3/index.json', packageIds);
-  if (target === 'github') {
-    const { GITHUB_REPOSITORY_OWNER: owner, GITHUB_ACTOR: actor, GITHUB_TOKEN: token } = process.env;
-    if (!owner || !actor || !token) throw new Error('GitHub feed lookup requires owner, actor, and token.');
-    const authorization = `Basic ${Buffer.from(`${actor}:${token}`).toString('base64')}`;
-    published.push(...await readVersions(
-      `https://nuget.pkg.github.com/${owner}/index.json`, packageIds, { authorization }));
-  }
+  const published = await readPublishedVersions(packageIds, process.env);
   const tag = process.env.GITHUB_EVENT_NAME === 'push'
     ? (process.env.GITHUB_REF || '').replace(/^refs\/tags\//, '') : '';
   if (process.env.GITHUB_EVENT_NAME === 'push' && !tag.startsWith('v')) {

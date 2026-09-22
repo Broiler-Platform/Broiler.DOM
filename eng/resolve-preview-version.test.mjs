@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { chooseVersion, readVersions } from './resolve-preview-version.mjs';
+import { NUGET_ORG, chooseVersion, readPublishedVersions, readVersions } from './resolve-preview-version.mjs';
 
 test('first publish uses the configured preview; later publishes increment numerically', () => {
   assert.equal(chooseVersion('0.1.0-preview.1', []), '0.1.0-preview.1');
@@ -58,4 +58,28 @@ test('feed failures and malformed responses stop publication', async () => {
     throw new Error('Network unavailable');
   }));
   await assert.rejects(readVersions('https://feed/index.json', ['Core'], {}, async () => Response.json({})));
+});
+
+test('the next preview is cumulative across NuGet.org and GitHub Packages', async () => {
+  const env = { GITHUB_REPOSITORY_OWNER: 'Owner', GITHUB_ACTOR: 'actor', GITHUB_TOKEN: 'token' };
+  const github = 'https://nuget.pkg.github.com/Owner/index.json';
+  const fetchImpl = async (url, options) => {
+    const feed = /^https:\/\/(nuget\.pkg\.)?github[./]/.test(url) ? 'github' : 'nuget';
+    assert.equal(Boolean(options.headers.authorization), feed === 'github', `Credentials sent to ${url}`);
+    if (url === NUGET_ORG || url === github) return Response.json({
+      resources: [{ '@type': 'PackageBaseAddress/3.0.0', '@id': `https://${feed}/flat/` }],
+    });
+    const versions = {
+      'https://nuget/flat/core/index.json': ['0.1.0-preview.1', '0.1.0-preview.2'],
+      'https://github/flat/core/index.json': ['0.1.0-preview.1', '0.1.0-preview.2', '0.1.0-preview.3'],
+    }[url];
+    return versions ? Response.json({ versions }) : new Response(null, { status: 404 });
+  };
+  const published = await readPublishedVersions(['Core'], env, fetchImpl);
+  assert.equal(chooseVersion('0.1.0-preview.1', published), '0.1.0-preview.4');
+  assert.throws(() => chooseVersion('0.1.0-preview.1', published, { tag: 'v0.1.0-preview.3' }));
+
+  await assert.rejects(readPublishedVersions(['Core'], { ...env, GITHUB_TOKEN: '' }, fetchImpl));
+  await assert.rejects(readPublishedVersions(['Core'], env, async (url, options) =>
+    url.startsWith('https://nuget.pkg.github.com/') ? new Response(null, { status: 401 }) : fetchImpl(url, options)));
 });

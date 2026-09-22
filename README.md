@@ -19,7 +19,7 @@ disagree about newlines, string comparison and culture, and the character-refere
 decoding this component hands to the platform is a different platform on each.
 
 Publish supports GitHub Packages and NuGet.org, automatic preview versions, and
-dry runs. See [CI, packages, and releases](docs/packaging.md) for configuration,
+dry runs. See [CI, packages, and releases](https://github.com/Broiler-Platform/Broiler.DOM/blob/main/docs/packaging.md) for configuration,
 credentials, and local packaging commands.
 
 ## Standards and rights
@@ -30,7 +30,7 @@ Claims and both let a participant exclude specific patents during a disclosure
 window, so neither is a statement that no relevant claim exists.
 
 That, and what this repository does and does not contain, is recorded in
-[the DOM IP and licensing register](docs/dom-ip-licensing-register.md), where
+[the DOM IP and licensing register](https://github.com/Broiler-Platform/Broiler.DOM/blob/main/docs/dom-ip-licensing-register.md), where
 **every row is now decided**. Decided is not cleared: no lawyer reviewed it,
 patent-freedom is not claimed, and no freedom-to-operate determination has been
 made. Both patent policies let a participant exclude patents during a disclosure
@@ -51,7 +51,7 @@ browser engine** and nothing here may describe it as one, or as HTML5-conformant
 
 This is first-preview software. Its API and behavior may change without compatibility
 guarantees. Substantial implementation work was AI-assisted. Human-review approval is
-revision-scoped; consult [HUMAN_REVIEW.md](HUMAN_REVIEW.md) for the reviewed revision
+revision-scoped; consult [HUMAN_REVIEW.md](https://github.com/Broiler-Platform/Broiler.DOM/blob/main/HUMAN_REVIEW.md) for the reviewed revision
 and conditions before describing the current checkout as approved.
 
 Broiler.DOM is an independent Broiler component. It interoperates with Broiler.HTML,
@@ -78,11 +78,11 @@ dotnet test Broiler.Dom.slnx
 
 ## Documentation
 
-- [Current roadmap](docs/roadmap.md) — the remaining component release gate
-- [Human-review record](HUMAN_REVIEW.md) — revision-scoped preview decision
+- [Current roadmap](https://github.com/Broiler-Platform/Broiler.DOM/blob/main/docs/roadmap.md) — the remaining component release gate
+- [Human-review record](https://github.com/Broiler-Platform/Broiler.DOM/blob/main/HUMAN_REVIEW.md) — revision-scoped preview decision
 
 ## License
 
-Broiler.DOM is licensed under the [Apache License 2.0](LICENSE). Third-party material, if
+Broiler.DOM is licensed under the [Apache License 2.0](https://github.com/Broiler-Platform/Broiler.DOM/blob/main/LICENSE). Third-party material, if
 present, retains the license identified with that material. The license provides the
 software on an “AS IS” basis, without warranties or conditions.
