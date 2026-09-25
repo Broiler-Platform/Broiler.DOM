@@ -305,8 +305,9 @@ public sealed class HtmlDocumentParser
         // dies with the parse, and a template that reaches a caller always carries its own
         // TemplateContents.
         var shadowContents = new Dictionary<DomElement, DomShadowRoot>();
-        var title = string.Empty;
-        var inTitle = false;
+        // The document's title element: the first HTML title element the parse meets (HTML §4.2.2,
+        // "the title element"; document.title reads it). The result's Title is its text.
+        DomElement? documentTitle = null;
         var bodyOpened = false;
 
         // The open elements no end tag in the markup may close: the body at the bottom of the stack,
@@ -412,14 +413,21 @@ public sealed class HtmlDocumentParser
                     if (errors is not null && token.SelfClosing && !VoidElements.Contains(tag) && !InForeignContent(openElements, tag))
                         errors.Report("non-void-html-element-start-tag-with-trailing-solidus", TrailingSolidusMessage(tag), token.SourceOffset);
 
-                    if (tag.Equals("title", StringComparison.OrdinalIgnoreCase) && !IsInTemplate(openElements))
+                    // An SVG or MathML <title> — an inline icon's tooltip, its accessible name — is not
+                    // this branch's: in foreign content (HTML §13.2.6.5) it is an ordinary element where
+                    // it stands, below. This branch used to take every title outside a template, which
+                    // moved an icon's title out of its <svg> into the head and appended its text to the
+                    // document's title.
+                    if (tag.Equals("title", StringComparison.OrdinalIgnoreCase) &&
+                        !IsInTemplate(openElements) &&
+                        !InForeignContent(openElements, tag))
                     {
-                        inTitle = true;
                         headOpened = true;
                         var titleElement = CreateElement(document, token);
                         head.AppendChild(titleElement);
                         openElements.Push(titleElement);
                         startTags?.TryAdd(titleElement, token.SourceOffset);
+                        documentTitle ??= titleElement;
                         break;
                     }
 
@@ -482,7 +490,6 @@ public sealed class HtmlDocumentParser
                     var tag = token.Name ?? string.Empty;
                     if (tag.Equals("title", StringComparison.OrdinalIgnoreCase))
                     {
-                        inTitle = false;
                         if (openElements.Count > 0 &&
                             openElements.Peek().LocalName.Equals("title", StringComparison.OrdinalIgnoreCase))
                         {
@@ -532,9 +539,6 @@ public sealed class HtmlDocumentParser
                 {
                     if (string.IsNullOrEmpty(token.Data))
                         break;
-
-                    if (inTitle)
-                        title += token.Data;
 
                     var parent = openElements.Count > 0 ? openElements.Peek() : body;
                     if (!bodyOpened && ReferenceEquals(parent, body))
@@ -599,7 +603,9 @@ public sealed class HtmlDocumentParser
             }
         }
 
-        return new HtmlDocumentParseResult(document, title.Trim(), diagnostics);
+        // Only the first HTML title element counts. The text of every title used to be appended, so
+        // two titles in a head gave both, and an icon's SVG title joined the page's.
+        return new HtmlDocumentParseResult(document, documentTitle?.TextContent.Trim() ?? string.Empty, diagnostics);
     }
 
     public static HtmlFragmentParseResult ParseFragment(string html, string contextTagName) =>
