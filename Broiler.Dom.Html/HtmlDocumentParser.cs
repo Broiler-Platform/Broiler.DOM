@@ -66,7 +66,7 @@ public sealed record HtmlParseOptions(bool AllowDeclarativeShadowRoots = false)
     /// construction's parse errors have no codes in the Standard, and only those that change what a
     /// page shows are reported, under names given here: a missing, late or legacy DOCTYPE
     /// (<c>missing-doctype</c>, <c>unexpected-doctype</c>, <c>legacy-doctype</c>); an end tag that
-    /// matches no open element (<c>unexpected-end-tag</c>) or closes others still open
+    /// matches no open element it may close, or stands for another (<c>unexpected-end-tag</c>), or closes others still open
     /// (<c>end-tag-closes-open-elements</c>); a <c>/</c> on a start tag that is not void
     /// (<c>non-void-html-element-start-tag-with-trailing-solidus</c>); and an element still open at end
     /// of input (<c>unclosed-element</c>). Where this parser departs from the Standard on one of these,
@@ -133,6 +133,81 @@ public sealed class HtmlDocumentParser
     private static readonly HashSet<string> ForeignIntegrationPoints = new(StringComparer.OrdinalIgnoreCase)
     {
         "foreignObject", "desc", "title", "mi", "mo", "mn", "ms", "mtext", "annotation-xml",
+    };
+
+    /// <summary>
+    /// The elements that bound "has an element in scope" (HTML §13.2.4.2), by name: the HTML ones and
+    /// the MathML and SVG integration points. The list item, button and table scopes below extend or
+    /// replace them, as the Standard's do.
+    /// </summary>
+    private static readonly HashSet<string> ScopeBoundaries = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "applet", "caption", "html", "table", "td", "th", "marquee", "object", "template",
+        "mi", "mo", "mn", "ms", "mtext", "annotation-xml", "foreignObject", "desc", "title",
+    };
+
+    private static readonly HashSet<string> ListItemScopeBoundaries = new(ScopeBoundaries, StringComparer.OrdinalIgnoreCase)
+    {
+        "ol", "ul",
+    };
+
+    private static readonly HashSet<string> ButtonScopeBoundaries = new(ScopeBoundaries, StringComparer.OrdinalIgnoreCase)
+    {
+        "button",
+    };
+
+    private static readonly HashSet<string> TableScopeBoundaries = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "html", "table", "template",
+    };
+
+    /// <summary>
+    /// The end tags the "in body" insertion mode acts on only when an element of that name is in
+    /// scope (HTML §13.2.6.4.7); the headings are handled with them, each closing any heading.
+    /// </summary>
+    private static readonly HashSet<string> ScopedEndTags = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "address", "article", "aside", "blockquote", "button", "center", "details", "dialog", "dir", "div",
+        "dl", "fieldset", "figcaption", "figure", "footer", "header", "hgroup", "listing", "main", "menu",
+        "nav", "ol", "pre", "search", "section", "summary", "ul", "dd", "dt", "form", "applet", "marquee",
+        "object",
+    };
+
+    private static readonly HashSet<string> Headings = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "h1", "h2", "h3", "h4", "h5", "h6",
+    };
+
+    /// <summary>The table parts, whose end tags look for their element in table scope.</summary>
+    private static readonly HashSet<string> TableEndTags = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "table", "tbody", "tfoot", "thead", "tr", "td", "th", "caption", "colgroup",
+    };
+
+    /// <summary>
+    /// The formatting elements, whose end tags run the adoption agency algorithm (HTML §13.2.6.4.7).
+    /// This builder does not model it, so theirs close the nearest element of the name wherever it is.
+    /// </summary>
+    private static readonly HashSet<string> FormattingElements = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "a", "b", "big", "code", "em", "font", "i", "nobr", "s", "small", "strike", "strong", "tt", "u",
+    };
+
+    /// <summary>
+    /// The "special" category (HTML §13.2.4.2), by name: the elements an end tag with no rule of its
+    /// own — "any other end tag" — does not reach past.
+    /// </summary>
+    private static readonly HashSet<string> SpecialElements = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "address", "applet", "area", "article", "aside", "base", "basefont", "bgsound", "blockquote", "body",
+        "br", "button", "caption", "center", "col", "colgroup", "dd", "details", "dir", "div", "dl", "dt",
+        "embed", "fieldset", "figcaption", "figure", "footer", "form", "frame", "frameset", "h1", "h2", "h3",
+        "h4", "h5", "h6", "head", "header", "hgroup", "hr", "html", "iframe", "img", "input", "keygen", "li",
+        "link", "listing", "main", "marquee", "menu", "meta", "nav", "noembed", "noframes", "noscript",
+        "object", "ol", "p", "param", "plaintext", "pre", "script", "search", "section", "select", "source",
+        "style", "summary", "table", "tbody", "td", "template", "textarea", "tfoot", "th", "thead", "title",
+        "tr", "track", "ul", "wbr", "xmp",
+        "mi", "mo", "mn", "ms", "mtext", "annotation-xml", "foreignObject", "desc",
     };
 
     private static readonly HashSet<string> PClosers = new(StringComparer.OrdinalIgnoreCase)
@@ -233,6 +308,23 @@ public sealed class HtmlDocumentParser
         var title = string.Empty;
         var inTitle = false;
         var bodyOpened = false;
+
+        // The open elements no end tag in the markup may close: the body at the bottom of the stack,
+        // and in a fragment every element the string wrapper opened — the context element included,
+        // which the fragment parsing algorithm (§13.4) never puts on the stack at all.
+        var endTagFloor = Math.Max(1, declarativeShadowRootFloor);
+
+        // An element an end tag stands for — the <p> of a stray </p>, the <br> of a </br> — inserted
+        // where a start tag's element would go, and closed at once.
+        void InsertClosedElement(string name)
+        {
+            bodyOpened = true;
+            var parent = openElements.Count > 0 ? openElements.Peek() : body;
+            var target = TableElements.Contains(parent.LocalName)
+                ? FosterParent(openElements, body)
+                : InsertionPoint(parent, shadowContents);
+            target.AppendChild(document.CreateElement(name));
+        }
 
         // The document's head and body exist from the start here, so these two flags stand in for
         // the insertion modes that decide where inter-element whitespace belongs (HTML §13.2.6.4):
@@ -404,14 +496,35 @@ public sealed class HtmlDocumentParser
 
                     if (StructuralTags.Contains(tag) || VoidElements.Contains(tag))
                     {
-                        if (errors is not null && VoidElements.Contains(tag) && !InForeignContent(openElements, tag))
+                        var foreign = VoidElements.Contains(tag) && InForeignContent(openElements, tag);
+                        if (errors is not null && VoidElements.Contains(tag) && !foreign)
                             errors.Report("unexpected-end-tag", VoidEndTagMessage(tag), token.SourceOffset);
+
+                        // HTML §13.2.6.4.7: "</br>" is a <br>. Every other void end tag is dropped.
+                        if (tag.Equals("br", StringComparison.OrdinalIgnoreCase) && !foreign)
+                            InsertClosedElement("br");
                         break;
                     }
 
+                    var plan = PlanEndTag(openElements, tag, endTagFloor);
+
+                    // Before the body, "</p>" is "any other end tag" of the head and body-less modes:
+                    // ignored, not an empty paragraph.
+                    if (plan.Outcome == EndTagOutcome.InsertParagraph && !bodyOpened)
+                        plan = plan with { Outcome = EndTagOutcome.NoMatch };
+
                     if (errors is not null)
-                        ReportEndTag(errors, openElements, tag, token.SourceOffset);
-                    PopToTag(openElements, tag);
+                        ReportEndTag(errors, plan, tag, token.SourceOffset);
+
+                    if (plan.Outcome == EndTagOutcome.Close)
+                    {
+                        for (var i = 0; i < plan.PopCount; i++)
+                            openElements.Pop();
+                    }
+                    else if (plan.Outcome == EndTagOutcome.InsertParagraph)
+                    {
+                        InsertClosedElement("p");
+                    }
                     break;
                 }
 
@@ -643,60 +756,132 @@ public sealed class HtmlDocumentParser
 
     private static string VoidEndTagMessage(string tag) =>
         tag.Equals("br", StringComparison.OrdinalIgnoreCase)
-            ? "</br> is read as <br> by a browser, a line break; this parser ignores it."
+            ? "</br> is read as <br>, a line break, as a browser reads it."
             : $"</{tag}> ends a void element, which has no end tag; it is ignored.";
 
+    /// <summary>What an end tag does to the stack of open elements.</summary>
+    private enum EndTagOutcome
+    {
+        /// <summary>Pops <see cref="EndTagPlan.PopCount"/> elements, the one it names last.</summary>
+        Close,
+
+        /// <summary>Nothing it may close has its name: it is ignored.</summary>
+        NoMatch,
+
+        /// <summary>An element of its name is open, beyond an element the end tag does not reach past: it is ignored.</summary>
+        OutOfScope,
+
+        /// <summary>A "&lt;/p&gt;" with no paragraph in button scope: an empty &lt;p&gt; is inserted.</summary>
+        InsertParagraph,
+    }
+
+    /// <param name="Outcome">What the end tag does.</param>
+    /// <param name="PopCount">How many elements a <see cref="EndTagOutcome.Close"/> pops.</param>
+    /// <param name="Target">The element it closes, or the one out of its reach.</param>
+    /// <param name="Blocker">The element it does not reach past, for <see cref="EndTagOutcome.OutOfScope"/>.</param>
+    /// <param name="StillOpen">The elements without an optional end tag a close pops on its way.</param>
+    private readonly record struct EndTagPlan(
+        EndTagOutcome Outcome,
+        int PopCount = 0,
+        string? Target = null,
+        string? Blocker = null,
+        List<string>? StillOpen = null);
+
     /// <summary>
-    /// Reports the parse errors of an end tag that <see cref="PopToTag"/> is about to handle: one that
-    /// matches no open element, and one that closes elements still open inside the one it matches.
+    /// Decides what an end tag does, by the rules of the "in body" insertion mode (HTML §13.2.6.4.7),
+    /// and says so once for both the tree and the parse error report.
     /// </summary>
     /// <remarks>
-    /// Walks the stack as <see cref="PopToTag"/> does — innermost first, never the bottom element,
-    /// which it never pops — so the report describes what that call does. Elements with an optional
-    /// end tag are closed without a report, as the Standard's implied end tags close them.
+    /// <para>
+    /// The stack is searched innermost first, and never at or below <paramref name="floor"/>. What
+    /// stops the search depends on the end tag: the block elements', <c>&lt;/dd&gt;</c>'s,
+    /// <c>&lt;/dt&gt;</c>'s and the headings' look for their element in scope, <c>&lt;/li&gt;</c>'s in
+    /// list item scope, <c>&lt;/p&gt;</c>'s in button scope and the table parts' in table scope; an end
+    /// tag with no rule of its own ("any other end tag") does not reach past a special element. A
+    /// heading's end tag closes any heading. <c>&lt;/template&gt;</c> and the formatting elements'
+    /// end tags close the nearest element of their name, wherever it is: the first because templates
+    /// are closed by name, the second because the adoption agency algorithm is not modelled.
+    /// </para>
+    /// <para>
+    /// This used to pop elements until one had the end tag's name, and an end tag that matched no
+    /// open element emptied the stack down to the body on the way. A single stray <c>&lt;/span&gt;</c>
+    /// or <c>&lt;/div&gt;</c> closed every container it was in, and the rest of the page rendered
+    /// outside them, where a browser ignores the tag.
+    /// </para>
     /// </remarks>
-    private static void ReportEndTag(HtmlParseErrorSink errors, Stack<DomElement> openElements, string tag, int offset)
+    private static EndTagPlan PlanEndTag(Stack<DomElement> openElements, string tag, int floor)
     {
+        var heading = Headings.Contains(tag);
+        var boundaries =
+            tag.Equals("p", StringComparison.OrdinalIgnoreCase) ? ButtonScopeBoundaries
+            : tag.Equals("li", StringComparison.OrdinalIgnoreCase) ? ListItemScopeBoundaries
+            : heading || ScopedEndTags.Contains(tag) ? ScopeBoundaries
+            : TableEndTags.Contains(tag) ? TableScopeBoundaries
+            : tag.Equals("template", StringComparison.OrdinalIgnoreCase) || FormattingElements.Contains(tag) ? null
+            : SpecialElements;
+
+        var reachable = openElements.Count - floor;
+        string? blocker = null;
         List<string>? stillOpen = null;
-        var depth = 0;
+        var index = 0;
         foreach (var open in openElements)
         {
-            if (++depth == openElements.Count)
+            if (index >= reachable)
                 break;
 
-            if (open.LocalName.Equals(tag, StringComparison.OrdinalIgnoreCase))
+            var name = open.LocalName;
+            if (heading ? Headings.Contains(name) : name.Equals(tag, StringComparison.OrdinalIgnoreCase))
             {
-                if (stillOpen is not null)
-                {
-                    errors.Report("end-tag-closes-open-elements",
-                        $"</{tag}> also closes {ListElements(stillOpen)}, still open inside it.",
-                        offset);
-                }
+                if (blocker is null)
+                    return new EndTagPlan(EndTagOutcome.Close, index + 1, name, StillOpen: stillOpen);
 
-                return;
+                return tag.Equals("p", StringComparison.OrdinalIgnoreCase)
+                    ? new EndTagPlan(EndTagOutcome.InsertParagraph, Target: name, Blocker: blocker)
+                    : new EndTagPlan(EndTagOutcome.OutOfScope, Target: name, Blocker: blocker);
             }
 
-            if (!OptionalEndTagElements.Contains(open.LocalName))
-                (stillOpen ??= []).Add(open.LocalName);
+            if (blocker is null && boundaries is not null && boundaries.Contains(name))
+                blocker = name;
+            if (blocker is null && !OptionalEndTagElements.Contains(name))
+                (stillOpen ??= []).Add(name);
+            index++;
         }
 
-        // PopToTag finds nothing, and empties the stack down to its bottom element on the way.
-        var closed = openElements.Count - 1;
-        var isP = tag.Equals("p", StringComparison.OrdinalIgnoreCase);
-        if (closed == 0 && !isP)
-        {
-            errors.Report("unexpected-end-tag", $"</{tag}> matches no open element and is ignored.", offset);
-            return;
-        }
+        return tag.Equals("p", StringComparison.OrdinalIgnoreCase)
+            ? new EndTagPlan(EndTagOutcome.InsertParagraph)
+            : new EndTagPlan(EndTagOutcome.NoMatch);
+    }
 
-        var parser = closed switch
+    /// <summary>
+    /// Reports the parse errors of an end tag as <paramref name="plan"/> handles it: one that closes
+    /// elements still open inside the one it names, one that closes another heading, and one the
+    /// builder ignores or stands in for. Elements with an optional end tag are closed without a
+    /// report, as the Standard's implied end tags close them.
+    /// </summary>
+    private static void ReportEndTag(HtmlParseErrorSink errors, EndTagPlan plan, string tag, int offset)
+    {
+        switch (plan.Outcome)
         {
-            0 => "this parser ignores it",
-            1 => "this parser closes the element still open here",
-            _ => $"this parser closes all {closed} elements still open here",
-        };
-        var browser = isP ? "a browser inserts an empty <p>" : "a browser ignores it";
-        errors.Report("unexpected-end-tag", $"</{tag}> matches no open element: {parser}, where {browser}.", offset);
+            case EndTagOutcome.Close when plan.StillOpen is { } stillOpen:
+                errors.Report("end-tag-closes-open-elements",
+                    $"</{tag}> also closes {ListElements(stillOpen)}, still open inside it.",
+                    offset);
+                break;
+            case EndTagOutcome.Close when !string.Equals(plan.Target, tag, StringComparison.OrdinalIgnoreCase):
+                errors.Report("unexpected-end-tag", $"</{tag}> closes the open <{plan.Target}>, as a browser does.", offset);
+                break;
+            case EndTagOutcome.NoMatch:
+                errors.Report("unexpected-end-tag", $"</{tag}> matches no open element and is ignored.", offset);
+                break;
+            case EndTagOutcome.OutOfScope:
+                errors.Report("unexpected-end-tag",
+                    $"</{tag}> is ignored: the open <{plan.Target}> is outside the <{plan.Blocker}> it would have to close first.",
+                    offset);
+                break;
+            case EndTagOutcome.InsertParagraph:
+                errors.Report("unexpected-end-tag", "</p> matches no open <p> and stands for an empty one, as in a browser.", offset);
+                break;
+        }
     }
 
     /// <summary>
@@ -804,15 +989,6 @@ public sealed class HtmlDocumentParser
             openElements.Pop();
     }
 
-    private static void PopToTag(Stack<DomElement> openElements, string tag)
-    {
-        while (openElements.Count > 1)
-        {
-            if (openElements.Pop().LocalName.Equals(tag, StringComparison.OrdinalIgnoreCase))
-                return;
-        }
-    }
-
     /// <remarks>
     /// HTML §13.2.6.1 fosters into the last table's <em>parent node</em>, which need not be an
     /// element: a table written inside a <c>&lt;template&gt;</c> hangs off the contents fragment,
@@ -859,10 +1035,14 @@ public sealed class HtmlDocumentParser
     /// end tag leaves — always would.
     /// </para>
     /// <para>
-    /// Input that contains the context element's own end tag still closes the wrapper early and loses
-    /// what follows (<c>textarea.innerHTML = "a&lt;/textarea&gt;b"</c>). §13.4 sets the tokenizer state
-    /// from the context element and has no appropriate end tag in the fragment case; that needs a
-    /// parser seeded from the context rather than a string wrapper (roadmap D6).
+    /// An end tag in the input never closes an element the wrapper opened: the tree builder does not
+    /// search the stack below the context depth, so <c>div.innerHTML = "a&lt;/div&gt;b"</c> keeps its
+    /// <c>b</c>, as it does in a browser, whose fragment parser never puts the context element on the
+    /// stack. The tokenizer still ends a text context at its own end tag
+    /// (<c>textarea.innerHTML = "a&lt;/textarea&gt;b"</c> gives <c>ab</c>, where a browser keeps the end
+    /// tag as text): §13.4 sets the tokenizer state from the context element and has no appropriate end
+    /// tag in the fragment case, which needs a parser seeded from the context rather than a string
+    /// wrapper (roadmap D6).
     /// </para>
     /// </remarks>
     /// <returns>

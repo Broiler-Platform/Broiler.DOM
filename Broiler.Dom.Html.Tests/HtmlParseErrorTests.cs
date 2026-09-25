@@ -129,14 +129,19 @@ public sealed class HtmlParseErrorTests
             errors.Select(error => $"{error.Code}@{error.Line}:{error.Column} {error.Message[..error.Message.IndexOf('>', StringComparison.Ordinal)]}>"));
     }
 
-    [Fact(Timeout = 600000)]
-    public void AnEndTagThatMatchesNothingSaysWhatThisParserClosesThere()
+    [Theory(Timeout = 600000)]
+    [InlineData("<div><span>x</p>", "</p> matches no open <p> and stands for an empty one, as in a browser.")]
+    [InlineData("<div>x</span>", "</span> matches no open element and is ignored.")]
+    [InlineData("<div><table><tr><td>x</div>", "</div> is ignored: the open <div> is outside the <td> it would have to close first.")]
+    [InlineData("<span><div>x</span>", "</span> is ignored: the open <span> is outside the <div> it would have to close first.")]
+    [InlineData("<h1>x</h2>", "</h2> closes the open <h1>, as a browser does.")]
+    [InlineData("a</br>", "</br> is read as <br>, a line break, as a browser reads it.")]
+    public void AnEndTagTheBuilderRepairsSaysWhatItDid(string markup, string message)
     {
-        var error = Errors("<!DOCTYPE html><div><span>x</p>").First();
+        var error = Errors("<!DOCTYPE html>" + markup).First();
 
         Assert.Equal("unexpected-end-tag", error.Code);
-        Assert.Contains("closes all 2 elements", error.Message, StringComparison.Ordinal);
-        Assert.Contains("inserts an empty <p>", error.Message, StringComparison.Ordinal);
+        Assert.Equal(message, error.Message);
     }
 
     [Fact(Timeout = 600000)]
