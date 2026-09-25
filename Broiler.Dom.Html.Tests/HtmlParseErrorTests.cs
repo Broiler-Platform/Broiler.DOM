@@ -84,6 +84,7 @@ public sealed class HtmlParseErrorTests
     [InlineData("<!DOCTYPE html><br/><img src=\"x\"/><input type=checkbox checked>")]
     [InlineData("<!DOCTYPE html><svg><path d=\"M0 0\"/><circle r=\"1\"/></svg><math><mi/></math>")]
     [InlineData("<!DOCTYPE html><p>An icon <svg/> and a formula <math/></p>")]
+    [InlineData("<!DOCTYPE html><title>Page</title><svg><title>Icon</title><title/></svg><math><title/></math>")]
     [InlineData("<!DOCTYPE html SYSTEM \"about:legacy-compat\"><p>x")]
     [InlineData("<!doctype HTML>\n<p>x</p>")]
     public void ConformingMarkupReportsNothing(string markup) => Assert.Empty(Errors(markup));

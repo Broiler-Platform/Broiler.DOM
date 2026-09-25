@@ -923,9 +923,11 @@ public sealed class HtmlTokenizer
             // the rest of a page with an inline SVG icon into title text. HtmlDocumentParser does not
             // push a self-closing element either, so a switched tokenizer would pour that text into
             // the element's parent, and the host's pre-parse scans already read a self-closing tag as
-            // opening nothing. Title is the parser's exception: its branch pushes the element whatever
-            // the flag says, so after `<title/>` the markup that follows, which stays markup here,
-            // becomes the title element's children (a separate inconsistency of the tree builder).
+            // opening nothing. An HTML title is the parser's exception: its branch pushes the element
+            // whatever the flag says, so after `<title/>` the markup that follows, which stays markup
+            // here, becomes the title element's children (a separate inconsistency of the tree builder).
+            // An SVG or MathML `<title/>` is not: the tree builder inserts it as the foreign element it
+            // is, and a self-closing one opens nothing.
             _state = State.Data;
             if (!_isEnd && !_selfClose)
             {
