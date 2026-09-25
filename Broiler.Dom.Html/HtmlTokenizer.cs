@@ -41,6 +41,13 @@ public sealed class HtmlToken(TokenType type, string? name = null, string? data 
     public string PublicId { get; } = publicId ?? "";
     /// <summary>Doctype SYSTEM identifier (empty when absent). Only set on <see cref="TokenType.Doctype"/> tokens.</summary>
     public string SystemId { get; } = systemId ?? "";
+
+    /// <summary>
+    /// Where the token starts in the preprocessed input — the <c>&lt;</c> of a tag, comment or DOCTYPE,
+    /// the end of the input for end-of-file — or -1 where the tokenizer does not track it (character
+    /// data). Read by the tree builder to locate the parse errors it reports.
+    /// </summary>
+    internal int SourceOffset { get; init; } = -1;
 }
 
 /// <summary>
@@ -52,11 +59,35 @@ public sealed class HtmlToken(TokenType type, string? name = null, string? data 
 public sealed class HtmlTokenizer
 {
     /// <summary>Tokenizes <paramref name="html"/> into an independent token sequence.</summary>
-    public IEnumerable<HtmlToken> Tokenize(string html)
+    public IEnumerable<HtmlToken> Tokenize(string html) => TokenizeWith(html, errors: null);
+
+    /// <summary>
+    /// Tokenizes <paramref name="html"/> and adds each parse error the tokenizer meets to
+    /// <paramref name="errors"/>, with the code HTML §13.2.5 gives it (<c>duplicate-attribute</c>,
+    /// <c>eof-in-tag</c>, …) and its line and column. The token sequence is the same either way.
+    /// </summary>
+    /// <remarks>
+    /// Only the errors of the states this tokenizer models are reported, and one it adds: a text
+    /// element — <c>script</c>, <c>style</c>, <c>textarea</c>, <c>title</c> — whose end tag never comes
+    /// (<c>eof-in-text</c>), which in tree construction is the parse error of the "text" insertion mode
+    /// and in a page is the reason everything after an unterminated <c>&lt;script&gt;</c> is gone.
+    /// Character reference errors are not reported: references are decoded by the platform's decoder,
+    /// which does not say what it could not decode.
+    /// </remarks>
+    public IEnumerable<HtmlToken> Tokenize(string html, ICollection<HtmlParseDiagnostic>? errors) =>
+        TokenizeWith(html, errors is null ? null : new HtmlParseErrorSink(errors));
+
+    /// <summary>
+    /// Tokenizes <paramref name="html"/>, reporting parse errors to <paramref name="errors"/>, which the
+    /// tree builder shares so that its own errors are located against the same input.
+    /// </summary>
+    internal IEnumerable<HtmlToken> TokenizeWith(string html, HtmlParseErrorSink? errors)
     {
         ArgumentNullException.ThrowIfNull(html);
         // Construct inside the iterator so repeated or interleaved enumerations never share state.
-        foreach (var token in new Scanner(NormalizeNewlines(html)).Read())
+        var input = NormalizeNewlines(html);
+        errors?.Attach(input);
+        foreach (var token in new Scanner(input, errors).Read())
             yield return token;
     }
 
@@ -68,7 +99,7 @@ public sealed class HtmlTokenizer
     private static string NormalizeNewlines(string html) =>
         html.Contains('\r') ? html.Replace("\r\n", "\n").Replace('\r', '\n') : html;
 
-    private sealed class Scanner(string input)
+    private sealed class Scanner(string input, HtmlParseErrorSink? errors)
     {
         private enum State
         {
@@ -147,6 +178,9 @@ public sealed class HtmlTokenizer
         };
 
         private string _rawTextTag = string.Empty; // the start tag an RCDATA/RAWTEXT run ends at
+        private int _rawTextStart;                 // where that start tag began, for eof-in-text
+        private int _tokenStart;                   // the '<' of the tag, comment or DOCTYPE being read
+        private readonly HtmlParseErrorSink? _errors = errors;
         private readonly string _input = input;
         private int _pos;
         private State _state;
@@ -178,6 +212,7 @@ public sealed class HtmlTokenizer
                         {
                             if (_buf.Length > 0)
                                 yield return CharTok();
+                            _tokenStart = _pos;
                             _state = State.TagOpen;
                             _pos++;
                         }
@@ -210,6 +245,7 @@ public sealed class HtmlTokenizer
                     case State.TagOpen:
                         if (eof)
                         {
+                            Error("eof-before-tag-name", "The input ends after a '<', which is kept as text.");
                             _buf.Append('<');
                             _state = State.Data;
                         }
@@ -220,6 +256,8 @@ public sealed class HtmlTokenizer
                         }
                         else if (c == '?')
                         {
+                            Error("unexpected-question-mark-instead-of-tag-name",
+                                "'<?' opens a processing instruction, which HTML does not have; it is dropped up to its '>'.");
                             _pos++;
                             SkipProcessingInstruction();
                             _state = State.Data;
@@ -236,6 +274,8 @@ public sealed class HtmlTokenizer
                         }
                         else
                         {
+                            Error("invalid-first-character-of-tag-name",
+                                $"'<' followed by {Printable(c)} does not start a tag and is kept as text (write &lt; for a literal '<').");
                             _buf.Append('<');
                             _state = State.Data;
                         }
@@ -244,6 +284,7 @@ public sealed class HtmlTokenizer
                     case State.EndTagOpen:
                         if (eof)
                         {
+                            Error("eof-before-tag-name", "The input ends after '</', which is kept as text.");
                             _buf.Append("</");
                             _state = State.Data;
                         }
@@ -254,6 +295,11 @@ public sealed class HtmlTokenizer
                         }
                         else
                         {
+                            if (c == '>')
+                                Error("missing-end-tag-name", "'</>' names no element.");
+                            else
+                                Error("invalid-first-character-of-tag-name",
+                                    $"'</' followed by {Printable(c)} is not an end tag; it becomes a comment up to the next '>'.");
                             _buf.Clear();
                             _state = State.BogusComment;
                         }
@@ -262,6 +308,7 @@ public sealed class HtmlTokenizer
                     case State.TagName:
                         if (eof)
                         {
+                            EofInTag();
                             _state = State.Data;
                         }
                         else if (char.IsWhiteSpace(c))
@@ -290,6 +337,7 @@ public sealed class HtmlTokenizer
                         if (eof)
                         {
                             Flush();
+                            EofInTag();
                             _state = State.Data;
                         }
                         else if (c == '>')
@@ -310,6 +358,9 @@ public sealed class HtmlTokenizer
                         }
                         else
                         {
+                            if (c == '=')
+                                Error("unexpected-equals-sign-before-attribute-name",
+                                    $"An '=' in <{_tag}> has no attribute name before it.");
                             Flush();
                             _attributeName.Clear();
                             _av.Clear();
@@ -333,6 +384,9 @@ public sealed class HtmlTokenizer
                         }
                         else
                         {
+                            if (c is '"' or '\'' or '<')
+                                Error("unexpected-character-in-attribute-name",
+                                    $"{Printable(c)} inside an attribute name of <{_tag}> becomes part of the name.");
                             _attributeName.Append(char.ToLowerInvariant(c));
                             _pos++;
                         }
@@ -364,6 +418,7 @@ public sealed class HtmlTokenizer
                         {
                             // eof-in-tag: the tag token is never emitted.
                             Flush();
+                            EofInTag();
                             _state = State.Data;
                         }
                         else if (char.IsWhiteSpace(c))
@@ -404,6 +459,7 @@ public sealed class HtmlTokenizer
                     case State.BeforeAttributeValue:
                         if (eof)
                         {
+                            EofInTag();
                             _state = State.Data;
                         }
                         else if (char.IsWhiteSpace(c))
@@ -422,6 +478,9 @@ public sealed class HtmlTokenizer
                         }
                         else
                         {
+                            if (c == '>')
+                                Error("missing-attribute-value",
+                                    $"The attribute '{_attributeName}' of <{_tag}> has an '=' and no value; it is empty.");
                             _state = State.AttributeValueUnquoted;
                         }
 
@@ -429,6 +488,7 @@ public sealed class HtmlTokenizer
                     case State.AttributeValueDoubleQuoted:
                         if (eof)
                         {
+                            EofInTag();
                             _state = State.Data;
                         }
                         else if (c == '"')
@@ -446,6 +506,7 @@ public sealed class HtmlTokenizer
                     case State.AttributeValueSingleQuoted:
                         if (eof)
                         {
+                            EofInTag();
                             _state = State.Data;
                         }
                         else if (c == '\'')
@@ -464,6 +525,7 @@ public sealed class HtmlTokenizer
                         if (eof)
                         {
                             Flush();
+                            EofInTag();
                             _state = State.Data;
                         }
                         else if (char.IsWhiteSpace(c))
@@ -480,6 +542,9 @@ public sealed class HtmlTokenizer
                         }
                         else
                         {
+                            if (c is '"' or '\'' or '<' or '=' or '`')
+                                Error("unexpected-character-in-unquoted-attribute-value",
+                                    $"{Printable(c)} inside the unquoted value of '{_attributeName}' in <{_tag}> becomes part of the value.");
                             _av.Append(c);
                             _pos++;
                         }
@@ -489,6 +554,7 @@ public sealed class HtmlTokenizer
                         Flush();
                         if (eof)
                         {
+                            EofInTag();
                             _state = State.Data;
                         }
                         else if (char.IsWhiteSpace(c))
@@ -508,6 +574,8 @@ public sealed class HtmlTokenizer
                         }
                         else
                         {
+                            Error("missing-whitespace-between-attributes",
+                                $"Two attributes of <{_tag}> with no space between them.");
                             _state = State.BeforeAttributeName;
                         }
 
@@ -515,6 +583,7 @@ public sealed class HtmlTokenizer
                     case State.SelfClosingStartTag:
                         if (eof)
                         {
+                            EofInTag();
                             _state = State.Data;
                         }
                         else if (c == '>')
@@ -525,6 +594,7 @@ public sealed class HtmlTokenizer
                         }
                         else
                         {
+                            Error("unexpected-solidus-in-tag", $"A '/' inside <{_tag}> that does not end it; it is ignored.");
                             _state = State.BeforeAttributeName;
                         }
 
@@ -546,13 +616,14 @@ public sealed class HtmlTokenizer
                             {
                                 if (_buf.Length > 0)
                                     yield return CharTok(decode: decode);
+                                var endTagStart = _pos;
                                 // Skip to after the '>'
                                 _pos += 2 + _rawTextTag.Length;
                                 while (_pos < _input.Length && _input[_pos] != '>')
                                     _pos++;
                                 if (_pos < _input.Length)
                                     _pos++; // skip '>'
-                                yield return new HtmlToken(TokenType.EndTag, name: _rawTextTag);
+                                yield return new HtmlToken(TokenType.EndTag, name: _rawTextTag) { SourceOffset = endTagStart };
                                 _rawTextTag = string.Empty;
                                 _state = State.Data;
                                 break;
@@ -571,6 +642,9 @@ public sealed class HtmlTokenizer
                         {
                             // End of input: the text read so far is the element's (§13.2.5.2/3 emit the
                             // end-of-file token), and a trailing "</title" was already appended to it.
+                            Error("eof-in-text",
+                                $"<{_rawTextTag}> has no </{_rawTextTag}>: everything after its start tag became its text.",
+                                _rawTextStart);
                             if (_buf.Length > 0)
                                 yield return CharTok(decode: decode);
                             _state = State.Data;
@@ -606,6 +680,10 @@ public sealed class HtmlTokenizer
                         }
                         else
                         {
+                            if (Ahead("[CDATA["))
+                                Error("cdata-in-html-content", "A CDATA section outside SVG or MathML becomes a comment.");
+                            else
+                                Error("incorrectly-opened-comment", "'<!' not followed by '--' or DOCTYPE opens a bogus comment up to the next '>'.");
                             _buf.Clear();
                             _state = State.BogusComment;
                         }
@@ -614,6 +692,7 @@ public sealed class HtmlTokenizer
                     case State.CommentStart:
                         if (eof)
                         {
+                            EofInComment();
                             yield return ComTok();
                             _state = State.Data;
                         }
@@ -626,6 +705,7 @@ public sealed class HtmlTokenizer
                         {
                             // `<!-->`: the abrupt-closing-of-empty-comment parse error (HTML
                             // §13.2.5.43, comment start state). The comment is empty and over.
+                            Error("abrupt-closing-of-empty-comment", "'<!-->' closes the comment it opens.");
                             _pos++;
                             yield return ComTok();
                             _state = State.Data;
@@ -649,6 +729,7 @@ public sealed class HtmlTokenizer
                         // dash of comment data (`<!---x-->` holds "-x").
                         if (eof)
                         {
+                            EofInComment();
                             yield return ComTok();
                             _state = State.Data;
                         }
@@ -659,6 +740,7 @@ public sealed class HtmlTokenizer
                         }
                         else if (c == '>')
                         {
+                            Error("abrupt-closing-of-empty-comment", "'<!--->' closes the comment it opens.");
                             _pos++;
                             yield return ComTok();
                             _state = State.Data;
@@ -675,6 +757,7 @@ public sealed class HtmlTokenizer
                     case State.Comment:
                         if (eof)
                         {
+                            EofInComment();
                             yield return ComTok();
                             _state = State.Data;
                         }
@@ -693,6 +776,7 @@ public sealed class HtmlTokenizer
                     case State.CommentEndDash:
                         if (eof)
                         {
+                            EofInComment();
                             yield return ComTok();
                             _state = State.Data;
                         }
@@ -713,7 +797,9 @@ public sealed class HtmlTokenizer
                     case State.CommentEnd:
                         if (eof || c == '>')
                         {
-                            if (!eof)
+                            if (eof)
+                                EofInComment();
+                            else
                                 _pos++;
                             yield return ComTok();
                             _state = State.Data;
@@ -735,7 +821,8 @@ public sealed class HtmlTokenizer
                     case State.Doctype:
                         if (eof)
                         {
-                            yield return new HtmlToken(TokenType.Doctype);
+                            Error("eof-in-doctype", "The input ends inside the DOCTYPE.");
+                            yield return new HtmlToken(TokenType.Doctype) { SourceOffset = _tokenStart };
                             yield return Eof();
                             yield break;
                         }
@@ -745,14 +832,15 @@ public sealed class HtmlTokenizer
                         }
                         else if (c == '>')
                         {
+                            Error("missing-doctype-name", "'<!DOCTYPE>' names no document type, which puts the document in quirks mode.", _tokenStart);
                             _pos++;
-                            yield return new HtmlToken(TokenType.Doctype, name: _tag.ToString());
+                            yield return new HtmlToken(TokenType.Doctype, name: _tag.ToString()) { SourceOffset = _tokenStart };
                             _state = State.Data;
                         }
                         else
                         {
                             ReadDoctype(out var dtPublicId, out var dtSystemId);
-                            yield return new HtmlToken(TokenType.Doctype, name: _tag.ToString(), publicId: dtPublicId, systemId: dtSystemId);
+                            yield return new HtmlToken(TokenType.Doctype, name: _tag.ToString(), publicId: dtPublicId, systemId: dtSystemId) { SourceOffset = _tokenStart };
                             _state = State.Data;
                         }
 
@@ -802,6 +890,8 @@ public sealed class HtmlTokenizer
             var attributeName = _attributeName.ToString();
             if (attributeName.Length > 0 && !_attrs.ContainsKey(attributeName))
                 _attrs[attributeName] = DecodeReferences(_av.ToString());
+            else if (attributeName.Length > 0)
+                Error("duplicate-attribute", $"<{_tag}> repeats the attribute '{attributeName}'; the first value is kept.");
             _attributeName.Clear();
             _av.Clear();
         }
@@ -810,7 +900,15 @@ public sealed class HtmlTokenizer
         {
             Flush();
             var tagName = _tag.ToString();
-            var tok = new HtmlToken(_isEnd ? TokenType.EndTag : TokenType.StartTag, name: tagName, selfClosing: _selfClose, attributes: _attrs);
+            var tok = new HtmlToken(_isEnd ? TokenType.EndTag : TokenType.StartTag, name: tagName, selfClosing: _selfClose, attributes: _attrs)
+            {
+                SourceOffset = _tokenStart,
+            };
+
+            if (_isEnd && _attrs.Count > 0)
+                Error("end-tag-with-attributes", $"</{tagName}> has attributes; an end tag's attributes are ignored.", _tokenStart);
+            if (_isEnd && _selfClose)
+                Error("end-tag-with-trailing-solidus", $"</{tagName}/> ends with '/', which an end tag ignores.", _tokenStart);
 
             // Every state that emits a tag does it through here, so this is the one place that decides
             // the state the tokenizer resumes in — before the token is yielded. Each call site used to
@@ -833,7 +931,10 @@ public sealed class HtmlTokenizer
             {
                 _state = TextStateFor(tagName);
                 if (_state is State.RcData or State.RawText)
+                {
                     _rawTextTag = tagName;
+                    _rawTextStart = _tokenStart;
+                }
             }
 
             return tok;
@@ -899,12 +1000,29 @@ public sealed class HtmlTokenizer
         private static string DecodeReferences(string value) => value.IndexOf('&') < 0 ? value : System.Net.WebUtility.HtmlDecode(value);
         private HtmlToken ComTok()
         {
-            var t = new HtmlToken(TokenType.Comment, data: _buf.ToString());
+            var t = new HtmlToken(TokenType.Comment, data: _buf.ToString()) { SourceOffset = _tokenStart };
             _buf.Clear();
             return t;
         }
 
-        private static HtmlToken Eof() => new(TokenType.EndOfFile);
+        private HtmlToken Eof() => new(TokenType.EndOfFile) { SourceOffset = _input.Length };
+
+        /// <summary>Reports a parse error at <paramref name="at"/>, or where the tokenizer is.</summary>
+        private void Error(string code, string message, int? at = null) => _errors?.Report(code, message, at ?? _pos);
+
+        private void EofInTag() =>
+            Error("eof-in-tag", $"The input ends inside the <{(_isEnd ? "/" : string.Empty)}{_tag}> tag, which is dropped.", _tokenStart);
+
+        private void EofInComment() =>
+            Error("eof-in-comment", "The input ends inside a comment: everything after '<!--' is the comment.", _tokenStart);
+
+        /// <summary>A character as a message can show it: quoted, or by its code point when it would not show.</summary>
+        private static string Printable(char c) => c switch
+        {
+            '\'' => "\"'\"",
+            _ when char.IsControl(c) || char.IsWhiteSpace(c) => $"U+{(int)c:X4}",
+            _ => $"'{c}'",
+        };
         private bool Ahead(string s) => _pos + s.Length <= _input.Length && _input.AsSpan(_pos, s.Length).SequenceEqual(s.AsSpan());
         private bool AheadCI(string s) => _pos + s.Length <= _input.Length && string.Compare(_input, _pos, s, 0, s.Length, StringComparison.OrdinalIgnoreCase) == 0;
         // Reads a DOCTYPE's name into _tag, plus its optional PUBLIC/SYSTEM external-identifier
@@ -941,6 +1059,8 @@ public sealed class HtmlTokenizer
                 _pos++;
             if (_pos < _input.Length)
                 _pos++;
+            else
+                Error("eof-in-doctype", "The input ends inside the DOCTYPE.", _tokenStart);
         }
 
         private void SkipWhitespace()

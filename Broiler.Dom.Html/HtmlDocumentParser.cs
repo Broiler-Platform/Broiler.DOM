@@ -6,7 +6,28 @@ using System.Linq;
 
 namespace Broiler.Dom.Html;
 
-public sealed record HtmlParseDiagnostic(string Message, int? SourceOffset = null);
+/// <summary>Something a parse met in the markup that a reader of the result may need to know.</summary>
+/// <param name="Message">What happened, in words.</param>
+/// <param name="SourceOffset">
+/// Where, as an offset into the input after input stream preprocessing (HTML §13.2.3.5), which turns
+/// each CRLF into one LF; <see langword="null"/> when the parse does not locate it.
+/// </param>
+public sealed record HtmlParseDiagnostic(string Message, int? SourceOffset = null)
+{
+    /// <summary>
+    /// The parse error's code, for a diagnostic that reports one (see
+    /// <see cref="HtmlParseOptions.ReportParseErrors"/>): the tokenizer's are the codes HTML §13.2.2
+    /// gives them, such as <c>duplicate-attribute</c> or <c>eof-in-tag</c>; tree construction's have
+    /// none in the Standard and are named here (<c>unexpected-end-tag</c>, <c>unclosed-element</c>, …).
+    /// </summary>
+    public string? Code { get; init; }
+
+    /// <summary>The 1-based line of <see cref="SourceOffset"/>, the same in the original input.</summary>
+    public int? Line { get; init; }
+
+    /// <summary>The 1-based column of <see cref="SourceOffset"/> on <see cref="Line"/>, in UTF-16 code units.</summary>
+    public int? Column { get; init; }
+}
 
 public sealed record HtmlDocumentParseResult(
     DomDocument Document,
@@ -32,7 +53,32 @@ public sealed record HtmlFragmentParseResult(
 /// sees none of those contexts, so the caller that does supplies the answer, and the default is the
 /// conservative one: markup of unknown provenance does not silently grow shadow trees.
 /// </remarks>
-public sealed record HtmlParseOptions(bool AllowDeclarativeShadowRoots = false);
+public sealed record HtmlParseOptions(bool AllowDeclarativeShadowRoots = false)
+{
+    /// <summary>
+    /// Whether a document parse adds each parse error it meets to its diagnostics, with a code, a
+    /// line and a column. Defaults to <c>false</c>, and the tree is the same either way.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// This is for tools that ask why a page came out as it did — an HTML validator's question, put to
+    /// this parser. Errors from the tokenizer carry the codes HTML §13.2.2 gives them. Tree
+    /// construction's parse errors have no codes in the Standard, and only those that change what a
+    /// page shows are reported, under names given here: a missing, late or legacy DOCTYPE
+    /// (<c>missing-doctype</c>, <c>unexpected-doctype</c>, <c>legacy-doctype</c>); an end tag that
+    /// matches no open element (<c>unexpected-end-tag</c>) or closes others still open
+    /// (<c>end-tag-closes-open-elements</c>); a <c>/</c> on a start tag that is not void
+    /// (<c>non-void-html-element-start-tag-with-trailing-solidus</c>); and an element still open at end
+    /// of input (<c>unclosed-element</c>). Where this parser departs from the Standard on one of these,
+    /// the message says what each does.
+    /// </para>
+    /// <para>
+    /// Fragment parsing reports none: this builder parses a fragment inside a synthetic document, whose
+    /// positions and open elements are not the caller's.
+    /// </para>
+    /// </remarks>
+    public bool ReportParseErrors { get; init; }
+}
 
 /// <summary>
 /// Shared HTML tree builder for the supported WHATWG-aligned subset.
@@ -58,6 +104,35 @@ public sealed class HtmlDocumentParser
     private static readonly HashSet<string> HeadMetadataElements = new(StringComparer.OrdinalIgnoreCase)
     {
         "style", "link", "meta", "base", "script", "noscript", "title"
+    };
+
+    /// <summary>
+    /// Elements whose end tag may be left out: HTML §13.2.6.4.7 reports no parse error when end of
+    /// input, or the end tag of an element they are in, closes them — the list the "in body" mode
+    /// checks at end of input, and the table parts a <c>&lt;/table&gt;</c> closes.
+    /// </summary>
+    private static readonly HashSet<string> OptionalEndTagElements = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "dd", "dt", "li", "optgroup", "option", "p", "rb", "rp", "rt", "rtc",
+        "caption", "colgroup", "tbody", "td", "tfoot", "th", "thead", "tr", "body", "html",
+    };
+
+    /// <summary>
+    /// Elements whose content the tokenizer reads as text up to their end tag. One the input ends
+    /// inside is the tokenizer's <c>eof-in-text</c>, so tree construction does not report it again.
+    /// </summary>
+    private static readonly HashSet<string> TextElements = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "title", "textarea", "script", "style", "xmp", "iframe", "noembed", "noframes", "noscript", "plaintext",
+    };
+
+    /// <summary>
+    /// The SVG and MathML elements whose content is parsed under the rules for HTML content again
+    /// (HTML §13.2.6.5, "HTML integration point" and "MathML text integration point").
+    /// </summary>
+    private static readonly HashSet<string> ForeignIntegrationPoints = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "foreignObject", "desc", "title", "mi", "mo", "mn", "ms", "mtext", "annotation-xml",
     };
 
     private static readonly HashSet<string> PClosers = new(StringComparer.OrdinalIgnoreCase)
@@ -106,7 +181,7 @@ public sealed class HtmlDocumentParser
     /// <see langword="null"/> takes the defaults.
     /// </param>
     public static HtmlDocumentParseResult ParseDocument(string html, DomDocument? document, HtmlParseOptions? options) =>
-        ParseDocument(html, document, options, declarativeShadowRootFloor: 0);
+        ParseDocument(html, document, options, declarativeShadowRootFloor: 0, reportParseErrors: options?.ReportParseErrors == true);
 
     /// <param name="declarativeShadowRootFloor">
     /// How many elements must already be open before a <c>&lt;template shadowrootmode&gt;</c> may
@@ -116,12 +191,17 @@ public sealed class HtmlDocumentParser
     /// document that is the html element, and for a fragment it is the context element, which the
     /// string wrapper opens before the caller's markup is reached.
     /// </param>
+    /// <param name="reportParseErrors">
+    /// Whether to add the parse errors met to the diagnostics — <see cref="HtmlParseOptions.ReportParseErrors"/>
+    /// for a document, never for the synthetic document a fragment is parsed in.
+    /// </param>
     /// <inheritdoc cref="ParseDocument(string, DomDocument, HtmlParseOptions)"/>
     private static HtmlDocumentParseResult ParseDocument(
         string html,
         DomDocument? document,
         HtmlParseOptions? options,
-        int declarativeShadowRootFloor)
+        int declarativeShadowRootFloor,
+        bool reportParseErrors)
     {
         ArgumentNullException.ThrowIfNull(html);
         options ??= DefaultOptions;
@@ -139,6 +219,11 @@ public sealed class HtmlDocumentParser
         var openElements = new Stack<DomElement>();
         openElements.Push(body);
         var diagnostics = new List<HtmlParseDiagnostic>();
+
+        // Parse errors, when they are asked for, and where each element opened by a start tag began,
+        // so that one still open at end of input is reported at its start tag rather than at the end.
+        var errors = reportParseErrors ? new HtmlParseErrorSink(diagnostics) : null;
+        var startTags = errors is null ? null : new Dictionary<DomElement, int>();
 
         // The template elements whose contents are a declarative shadow root rather than their own
         // fragment. Parse-local by construction: these templates are never in the tree, so the map
@@ -165,14 +250,22 @@ public sealed class HtmlDocumentParser
         // consumer of the tree.
         var initialInsertionMode = true;
 
-        foreach (var token in new HtmlTokenizer().Tokenize(html))
+        foreach (var token in new HtmlTokenizer().TokenizeWith(html, errors))
         {
             // Decided here, ahead of the switch, rather than inside the per-type cases: the character
             // case `continue`s past whitespace it drops before the head exists — testing Unicode
             // whitespace, so U+00A0 with it — and a U+00A0 must still end the initial mode.
             var inInitialInsertionMode = initialInsertionMode;
             if (initialInsertionMode && !StaysInInitialInsertionMode(token))
+            {
                 initialInsertionMode = false;
+                if (token.Type != TokenType.Doctype)
+                {
+                    errors?.Report("missing-doctype",
+                        "The document does not begin with a DOCTYPE, which renders it in quirks mode.",
+                        Math.Max(token.SourceOffset, 0));
+                }
+            }
 
             switch (token.Type)
             {
@@ -190,6 +283,18 @@ public sealed class HtmlDocumentParser
                     {
                         var doctype = document.CreateDocumentType(token.Name, token.PublicId, token.SystemId);
                         document.InsertBefore(doctype, root);
+                        if (errors is not null && IsLegacyDoctype(token))
+                        {
+                            errors.Report("legacy-doctype",
+                                "This DOCTYPE is not <!DOCTYPE html>; by its name and identifiers a browser may render the document in quirks or limited-quirks mode.",
+                                token.SourceOffset);
+                        }
+                    }
+                    else if (!inInitialInsertionMode)
+                    {
+                        errors?.Report("unexpected-doctype",
+                            "A DOCTYPE after the start of the document is ignored and does not set its mode.",
+                            token.SourceOffset);
                     }
                     break;
 
@@ -212,6 +317,9 @@ public sealed class HtmlDocumentParser
                         break;
                     }
 
+                    if (errors is not null && token.SelfClosing && !VoidElements.Contains(tag) && !InForeignContent(openElements, tag))
+                        errors.Report("non-void-html-element-start-tag-with-trailing-solidus", TrailingSolidusMessage(tag), token.SourceOffset);
+
                     if (tag.Equals("title", StringComparison.OrdinalIgnoreCase) && !IsInTemplate(openElements))
                     {
                         inTitle = true;
@@ -219,6 +327,7 @@ public sealed class HtmlDocumentParser
                         var titleElement = CreateElement(document, token);
                         head.AppendChild(titleElement);
                         openElements.Push(titleElement);
+                        startTags?.TryAdd(titleElement, token.SourceOffset);
                         break;
                     }
 
@@ -228,7 +337,10 @@ public sealed class HtmlDocumentParser
                         var metadata = CreateElement(document, token);
                         head.AppendChild(metadata);
                         if (!VoidElements.Contains(tag) && !token.SelfClosing)
+                        {
                             openElements.Push(metadata);
+                            startTags?.TryAdd(metadata, token.SourceOffset);
+                        }
                         break;
                     }
 
@@ -260,12 +372,16 @@ public sealed class HtmlDocumentParser
                         // tree and the template itself is gone once the end tag pops it.
                         shadowContents[element] = declarativeShadow;
                         openElements.Push(element);
+                        startTags?.TryAdd(element, token.SourceOffset);
                         break;
                     }
 
                     insertionTarget.AppendChild(element);
                     if (!VoidElements.Contains(tag) && !token.SelfClosing)
+                    {
                         openElements.Push(element);
+                        startTags?.TryAdd(element, token.SourceOffset);
+                    }
                     break;
                 }
 
@@ -287,8 +403,14 @@ public sealed class HtmlDocumentParser
                         headClosed = true;
 
                     if (StructuralTags.Contains(tag) || VoidElements.Contains(tag))
+                    {
+                        if (errors is not null && VoidElements.Contains(tag) && !InForeignContent(openElements, tag))
+                            errors.Report("unexpected-end-tag", VoidEndTagMessage(tag), token.SourceOffset);
                         break;
+                    }
 
+                    if (errors is not null)
+                        ReportEndTag(errors, openElements, tag, token.SourceOffset);
                     PopToTag(openElements, tag);
                     break;
                 }
@@ -358,6 +480,8 @@ public sealed class HtmlDocumentParser
                 }
 
                 case TokenType.EndOfFile:
+                    if (errors is not null)
+                        ReportUnclosedElements(errors, openElements, startTags!, token.SourceOffset);
                     break;
             }
         }
@@ -384,7 +508,7 @@ public sealed class HtmlDocumentParser
             return new HtmlFragmentParseResult(new DomDocument().CreateDocumentFragment(), []);
 
         var (wrapper, contextDepth) = BuildFragmentDocument(contextTagName.ToLowerInvariant(), html);
-        var result = ParseDocument(wrapper, null, options, contextDepth);
+        var result = ParseDocument(wrapper, null, options, contextDepth, reportParseErrors: false);
         var context = FindContextElement(result.Document, contextTagName) ?? result.Document.Body ?? result.Document.DocumentElement!;
         var fragment = result.Document.CreateDocumentFragment();
         // A template context parsed the input into the wrapper template's contents, not into its
@@ -470,6 +594,137 @@ public sealed class HtmlDocumentParser
                 $"stays an ordinary template: {exception.Message}"));
             return false;
         }
+    }
+
+    /// <summary>
+    /// Whether a DOCTYPE is a parse error in the "initial" insertion mode (HTML §13.2.6.4.1): a name
+    /// other than <c>html</c>, a public identifier, or a system identifier other than
+    /// <c>about:legacy-compat</c>. The tokenizer gives an absent identifier as the empty string, so an
+    /// empty one written out (<c>PUBLIC ""</c>) counts as absent here.
+    /// </summary>
+    private static bool IsLegacyDoctype(HtmlToken token) =>
+        !string.Equals(token.Name, "html", StringComparison.Ordinal) ||
+        token.PublicId.Length > 0 ||
+        token.SystemId.Length > 0 && !string.Equals(token.SystemId, "about:legacy-compat", StringComparison.Ordinal);
+
+    /// <summary>
+    /// Whether a start or end tag named <paramref name="tag"/> is in SVG or MathML content, where a
+    /// self-closing flag is acknowledged and void-element names mean nothing special.
+    /// </summary>
+    /// <remarks>
+    /// Decided from the open elements' names, innermost first: an <c>svg</c> or <c>math</c> element
+    /// is foreign content, and an integration point inside one is HTML content again.
+    /// </remarks>
+    private static bool InForeignContent(Stack<DomElement> openElements, string tag)
+    {
+        if (tag.Equals("svg", StringComparison.OrdinalIgnoreCase) || tag.Equals("math", StringComparison.OrdinalIgnoreCase))
+            return true;
+
+        foreach (var open in openElements)
+        {
+            if (open.LocalName.Equals("svg", StringComparison.OrdinalIgnoreCase) ||
+                open.LocalName.Equals("math", StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+
+            if (ForeignIntegrationPoints.Contains(open.LocalName))
+                return false;
+        }
+
+        return false;
+    }
+
+    private static string TrailingSolidusMessage(string tag) =>
+        tag.Equals("title", StringComparison.OrdinalIgnoreCase)
+            ? "<title/> is not a void element: the '/' is ignored and the title stays open."
+            : $"<{tag}/> is not a void element: a browser ignores the '/' and leaves the element open, where this " +
+              "parser closes it at once, so the content after it can end up in a different parent.";
+
+    private static string VoidEndTagMessage(string tag) =>
+        tag.Equals("br", StringComparison.OrdinalIgnoreCase)
+            ? "</br> is read as <br> by a browser, a line break; this parser ignores it."
+            : $"</{tag}> ends a void element, which has no end tag; it is ignored.";
+
+    /// <summary>
+    /// Reports the parse errors of an end tag that <see cref="PopToTag"/> is about to handle: one that
+    /// matches no open element, and one that closes elements still open inside the one it matches.
+    /// </summary>
+    /// <remarks>
+    /// Walks the stack as <see cref="PopToTag"/> does — innermost first, never the bottom element,
+    /// which it never pops — so the report describes what that call does. Elements with an optional
+    /// end tag are closed without a report, as the Standard's implied end tags close them.
+    /// </remarks>
+    private static void ReportEndTag(HtmlParseErrorSink errors, Stack<DomElement> openElements, string tag, int offset)
+    {
+        List<string>? stillOpen = null;
+        var depth = 0;
+        foreach (var open in openElements)
+        {
+            if (++depth == openElements.Count)
+                break;
+
+            if (open.LocalName.Equals(tag, StringComparison.OrdinalIgnoreCase))
+            {
+                if (stillOpen is not null)
+                {
+                    errors.Report("end-tag-closes-open-elements",
+                        $"</{tag}> also closes {ListElements(stillOpen)}, still open inside it.",
+                        offset);
+                }
+
+                return;
+            }
+
+            if (!OptionalEndTagElements.Contains(open.LocalName))
+                (stillOpen ??= []).Add(open.LocalName);
+        }
+
+        // PopToTag finds nothing, and empties the stack down to its bottom element on the way.
+        var closed = openElements.Count - 1;
+        var isP = tag.Equals("p", StringComparison.OrdinalIgnoreCase);
+        if (closed == 0 && !isP)
+        {
+            errors.Report("unexpected-end-tag", $"</{tag}> matches no open element and is ignored.", offset);
+            return;
+        }
+
+        var parser = closed switch
+        {
+            0 => "this parser ignores it",
+            1 => "this parser closes the element still open here",
+            _ => $"this parser closes all {closed} elements still open here",
+        };
+        var browser = isP ? "a browser inserts an empty <p>" : "a browser ignores it";
+        errors.Report("unexpected-end-tag", $"</{tag}> matches no open element: {parser}, where {browser}.", offset);
+    }
+
+    /// <summary>
+    /// Reports each element still open at end of input whose end tag is not optional, at its start
+    /// tag — outermost first — or at the end of the input for one whose start tag was implied.
+    /// </summary>
+    private static void ReportUnclosedElements(
+        HtmlParseErrorSink errors,
+        Stack<DomElement> openElements,
+        Dictionary<DomElement, int> startTags,
+        int endOfInput)
+    {
+        foreach (var open in openElements.Reverse())
+        {
+            if (OptionalEndTagElements.Contains(open.LocalName) || TextElements.Contains(open.LocalName))
+                continue;
+
+            errors.Report("unclosed-element",
+                $"<{open.LocalName}> is still open at the end of the input.",
+                startTags.TryGetValue(open, out var start) ? start : endOfInput);
+        }
+    }
+
+    /// <summary>A few element names for a message: the first five, and how many more.</summary>
+    private static string ListElements(List<string> names)
+    {
+        var shown = string.Join(", ", names.Take(5).Select(name => $"<{name}>"));
+        return names.Count > 5 ? $"{shown} and {names.Count - 5} more" : shown;
     }
 
     /// <summary>Whether any element still open is a <c>&lt;template&gt;</c>.</summary>
