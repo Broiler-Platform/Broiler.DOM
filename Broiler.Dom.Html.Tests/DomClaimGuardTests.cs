@@ -115,11 +115,25 @@ public sealed class DomClaimGuardTests
             .Where(path => !IsToolingDirectory(path))
             .Where(path => extensions.Contains(Path.GetExtension(path), StringComparer.OrdinalIgnoreCase))
             .Select(path => Path.GetRelativePath(root, path))
+            .Where(path => !IsAssuranceRecord(path))
             .Order(StringComparer.Ordinal)
             .ToArray();
 
         Assert.Empty(committed);
     }
+
+    /// <summary>
+    /// Whether <paramref name="path"/>, relative to the component root, is one of the two JSON
+    /// files of the per-declaration assurance record: its configuration and the manifest
+    /// <c>broiler-review assurance generate</c> writes beside it.
+    /// </summary>
+    /// <remarks>
+    /// Both are the platform's own records of this component's source, not test data, and both
+    /// live at the root and nowhere else. They are named exactly, so a conformance fixture that
+    /// happened to be called <c>assurance.manifest.json</c> one directory down is still refused.
+    /// </remarks>
+    private static bool IsAssuranceRecord(string path) =>
+        path is "assurance.config.json" or "assurance.manifest.json";
 
     [Fact(Timeout = 600000)]
     public void The_Register_Exists_And_Bounds_The_Components_Wording()

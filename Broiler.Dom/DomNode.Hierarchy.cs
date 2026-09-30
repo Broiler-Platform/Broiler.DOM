@@ -2,14 +2,23 @@ using System.Linq;
 
 namespace Broiler.Dom;
 
+// Broiler-AI:           Origin=AI; IP=Low; Security=Medium; Resources=3; Fingerprint=TBF
+// Broiler-Falsified-If: a node these checks accept becomes its own ancestor through a shadow-host link, as when a shadow host is appended to its own shadow root, and the connectedness walk that follows never returns
+// Broiler-Human:        PENDING
 public abstract partial class DomNode
 {
+    // Broiler-AI:           Origin=AI; IP=Low; Security=Medium; Resources=0; Fingerprint=TBF
+    // Broiler-Falsified-If: called on a DomText, DomComment or DomDocumentType node it returns instead of throwing HierarchyRequestError
+    // Broiler-Human:        PENDING
     private void EnsureCanHaveChildren()
     {
         if (this is DomText or DomComment or DomDocumentType)
             throw DomException.HierarchyRequest($"{NodeType} nodes cannot have children.");
     }
 
+    // Broiler-AI:           Origin=AI; Spec=WHATWG-DOM s4.2.3; IP=Low; Security=Medium; Resources=3; Fingerprint=TBF
+    // Broiler-Falsified-If: a template element appended to its own template contents passes, because only parent links are walked and not the host link a host-including ancestor check follows
+    // Broiler-Human:        PENDING
     internal void EnsurePreInsertValidity(DomNode node, DomNode? referenceNode, DomNode? replacedChild = null)
     {
         EnsureCanHaveChildren();

@@ -2,6 +2,8 @@ using System.Collections.Generic;
 
 namespace Broiler.Dom;
 
+// Broiler-AI:           Origin=AI; IP=None; Security=None; Resources=0; Fingerprint=TBF
+// Broiler-Human:        PENDING
 public enum DomMutationType
 {
     ChildList,
@@ -10,6 +12,8 @@ public enum DomMutationType
     Adoption,
 }
 
+// Broiler-AI:           Origin=AI; IP=None; Security=Low; Resources=1; Fingerprint=TBF
+// Broiler-Human:        PENDING
 public sealed record DomMutationRecord(
     DomMutationType Type,
     DomNode Target,

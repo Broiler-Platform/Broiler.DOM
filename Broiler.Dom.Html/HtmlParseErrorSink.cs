@@ -20,12 +20,18 @@ namespace Broiler.Dom.Html;
 /// parse, and every parse that did not ask — pays nothing; one with errors pays one pass over the input.
 /// </para>
 /// </remarks>
+// Broiler-AI:           Origin=AI; IP=Low; Security=Medium; Resources=4; Fingerprint=TBF
+// Broiler-Falsified-If: an error reported after a newline gets a line or column that does not match its place in the preprocessed input
+// Broiler-Human:        PENDING
 internal sealed class HtmlParseErrorSink(ICollection<HtmlParseDiagnostic> diagnostics)
 {
     private string _input = string.Empty;
     private List<int>? _lineStarts;
 
     /// <summary>Sets the preprocessed input the offsets refer to.</summary>
+    // Broiler-AI:           Origin=AI; IP=Low; Security=Low; Resources=0; Fingerprint=TBF
+    // Broiler-Falsified-If: a line index built for an earlier input is reused after a new input is attached
+    // Broiler-Human:        PENDING
     public void Attach(string input)
     {
         _input = input;
@@ -33,6 +39,9 @@ internal sealed class HtmlParseErrorSink(ICollection<HtmlParseDiagnostic> diagno
     }
 
     /// <summary>Reports the parse error <paramref name="code"/> at <paramref name="offset"/>.</summary>
+    // Broiler-AI:           Origin=AI; IP=Low; Security=Medium; Resources=4; Fingerprint=TBF
+    // Broiler-Falsified-If: a negative offset or one past the end of the input is recorded as is instead of being clamped into the input
+    // Broiler-Human:        PENDING
     public void Report(string code, string message, int offset)
     {
         offset = Math.Clamp(offset, 0, _input.Length);
@@ -40,6 +49,9 @@ internal sealed class HtmlParseErrorSink(ICollection<HtmlParseDiagnostic> diagno
         diagnostics.Add(new HtmlParseDiagnostic(message, offset) { Code = code, Line = line, Column = column });
     }
 
+    // Broiler-AI:           Origin=AI; IP=Low; Security=Medium; Resources=4; Fingerprint=TBF
+    // Broiler-Falsified-If: an offset right after a newline is placed on the previous line or at column 0
+    // Broiler-Human:        PENDING
     private (int Line, int Column) Locate(int offset)
     {
         if (_lineStarts is null)

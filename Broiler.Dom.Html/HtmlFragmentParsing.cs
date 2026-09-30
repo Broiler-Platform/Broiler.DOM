@@ -8,6 +8,9 @@ namespace Broiler.Dom.Html;
 /// Helper operations for HTML fragment parsing, including context tag normalisation,
 /// void element guards, and fragment creation.
 /// </summary>
+// Broiler-AI:           Origin=AI; IP=Low; Security=High; Resources=5; Fingerprint=TBF
+// Broiler-Falsified-If: markup assigned to a textarea, title, script or style context comes back as elements instead of one run of text
+// Broiler-Human:        PENDING
 public static class HtmlFragmentParsing
 {
     /// <summary>
@@ -15,6 +18,9 @@ public static class HtmlFragmentParsing
     /// <c>#</c> (such as <c>#shadow-root</c>) are mapped to <c>"div"</c>, and regular tag
     /// names are trimmed and converted to lower case.
     /// </summary>
+    // Broiler-AI:           Origin=AI; IP=Low; Security=High; Resources=1; Fingerprint=TBF
+    // Broiler-Falsified-If: a padded or upper-case text-only name such as ' TEXTAREA ' normalises to a name that no longer selects the text state
+    // Broiler-Human:        PENDING
     public static string NormalizeContextTag(string? contextTag)
     {
         if (string.IsNullOrWhiteSpace(contextTag))
@@ -32,6 +38,9 @@ public static class HtmlFragmentParsing
     /// Void elements (such as <c>&lt;img&gt;</c> or <c>&lt;input&gt;</c>) cannot have children and
     /// therefore cannot host an innerHTML fragment.
     /// </summary>
+    // Broiler-AI:           Origin=AI; IP=Low; Security=High; Resources=1; Fingerprint=TBF
+    // Broiler-Falsified-If: markup set on a void element such as img is refused, where the fragment algorithm gives the element the parsed children
+    // Broiler-Human:        PENDING
     public static bool CanHostFragment(string? contextTag)
     {
         if (string.IsNullOrWhiteSpace(contextTag))
@@ -45,6 +54,9 @@ public static class HtmlFragmentParsing
     /// Attempts to parse an HTML fragment within the context of a tag name. Returns
     /// <see langword="false"/> if the context tag cannot host child content.
     /// </summary>
+    // Broiler-AI:           Origin=AI; IP=Low; Security=High; Resources=5; Fingerprint=TBF
+    // Broiler-Falsified-If: this overload turns declarative shadow roots on, so markup with a shadowrootmode template attaches a shadow root
+    // Broiler-Human:        PENDING
     public static bool TryBuildFragment(string? contextTag, string? html, [NotNullWhen(true)] out DomDocumentFragment? fragment) =>
         TryBuildFragment(contextTag, html, null, out fragment);
 
@@ -56,6 +68,9 @@ public static class HtmlFragmentParsing
     /// and not to <c>innerHTML</c>, which is why the overload without this parameter leaves them off.
     /// </param>
     /// <param name="fragment">The parsed fragment, when this returns <see langword="true"/>.</param>
+    // Broiler-AI:           Origin=AI; IP=Low; Security=High; Resources=5; Fingerprint=TBF
+    // Broiler-Falsified-If: a context tag such as 'div><img src=x onerror=f()' yields a fragment holding the img element spelled in the context name
+    // Broiler-Human:        PENDING
     public static bool TryBuildFragment(
         string? contextTag,
         string? html,
@@ -75,6 +90,9 @@ public static class HtmlFragmentParsing
     /// Attempts to parse an HTML fragment within the context of an existing <see cref="DomElement"/>.
     /// Returns <see langword="false"/> if the element is a void element.
     /// </summary>
+    // Broiler-AI:           Origin=AI; IP=Low; Security=High; Resources=5; Fingerprint=TBF
+    // Broiler-Falsified-If: this overload turns declarative shadow roots on, so markup with a shadowrootmode template attaches a shadow root
+    // Broiler-Human:        PENDING
     public static bool TryBuildFragment(DomElement contextElement, string? html, [NotNullWhen(true)] out DomDocumentFragment? fragment) =>
         TryBuildFragment(contextElement, html, null, out fragment);
 
@@ -83,6 +101,9 @@ public static class HtmlFragmentParsing
     /// <param name="html">The fragment's markup.</param>
     /// <param name="options">Switches the markup does not answer.</param>
     /// <param name="fragment">The parsed fragment, when this returns <see langword="true"/>.</param>
+    // Broiler-AI:           Origin=AI; IP=Low; Security=High; Resources=5; Fingerprint=TBF
+    // Broiler-Falsified-If: markup set on a textarea or title element is parsed into elements rather than text
+    // Broiler-Human:        PENDING
     public static bool TryBuildFragment(
         DomElement contextElement,
         string? html,

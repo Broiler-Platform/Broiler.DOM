@@ -5,6 +5,8 @@ namespace Broiler.Dom;
 /// <summary>
 /// Specifies the mode of a shadow root (DOM §4.2.2).
 /// </summary>
+// Broiler-AI:           Origin=AI; IP=None; Security=None; Resources=0; Fingerprint=TBF
+// Broiler-Human:        PENDING
 public enum DomShadowRootMode
 {
     Open,
@@ -14,6 +16,8 @@ public enum DomShadowRootMode
 /// <summary>
 /// Specifies how slots are assigned within a shadow root (DOM §4.2.2).
 /// </summary>
+// Broiler-AI:           Origin=AI; IP=None; Security=None; Resources=0; Fingerprint=TBF
+// Broiler-Human:        PENDING
 public enum DomSlotAssignmentMode
 {
     Named,
@@ -24,8 +28,14 @@ public enum DomSlotAssignmentMode
 /// Represents a shadow root node (DOM §4.2.2). ShadowRoot nodes are DocumentFragment nodes
 /// that are associated with a host element and encapsulate a DOM subtree.
 /// </summary>
+// Broiler-AI:           Origin=AI; Spec=WHATWG-DOM s4.8; IP=Low; Security=Medium; Resources=0; Fingerprint=TBF
+// Broiler-Falsified-If: cloneNode on a shadow root returns a copy instead of raising NotSupportedError
+// Broiler-Human:        PENDING
 public class DomShadowRoot : DomDocumentFragment
 {
+    // Broiler-AI:           Origin=AI; IP=Low; Security=Medium; Resources=0; Fingerprint=TBF
+    // Broiler-Falsified-If: a root created with Closed mode, Manual slot assignment or the clonable or serializable flag reports a different value for that property than the one passed
+    // Broiler-Human:        PENDING
     internal DomShadowRoot(
         DomElement host,
         DomShadowRootMode mode,
@@ -79,6 +89,9 @@ public class DomShadowRoot : DomDocumentFragment
     /// </remarks>
     public bool Serializable { get; }
 
+    // Broiler-AI:           Origin=AI; IP=Low; Security=Medium; Resources=0; Fingerprint=TBF
+    // Broiler-Falsified-If: CloneShallow returns a node instead of throwing NotSupportedError, so a shadow root can be copied into a detached fragment
+    // Broiler-Human:        PENDING
     internal override DomNode CloneShallow(DomDocument ownerDocument) =>
         throw DomException.NotSupported("ShadowRoot cannot be cloned.");
 }

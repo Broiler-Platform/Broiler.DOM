@@ -9,8 +9,14 @@ namespace Broiler.Dom.Html;
 /// Queries on parsed HTML DOM trees and raw HTML markup streams for document-level metadata,
 /// including document base URL (<c>&lt;base href&gt;</c>) and doctype detection.
 /// </summary>
+// Broiler-AI:           Origin=AI; IP=Low; Security=High; Resources=6; Fingerprint=TBF
+// Broiler-Falsified-If: a <base href> inside a <template>, as a DOM element or between <template> and </template> in raw source, is returned as the document's base URL
+// Broiler-Human:        PENDING
 public static class HtmlDocumentQueries
 {
+    // Broiler-AI:           Origin=AI; IP=None; Security=High; Resources=0; Fingerprint=TBF
+    // Broiler-Falsified-If: the constant holds a character beyond tab, LF, FF, CR and space, so source starting with U+00A0 or U+000B before <!DOCTYPE html> reports an html doctype
+    // Broiler-Human:        PENDING
     private const string AsciiWhitespace = "\t\n\f\r ";
 
     /// <summary>
@@ -25,6 +31,9 @@ public static class HtmlDocumentQueries
     /// the tree, so a descendant walk never reaches one. The token overload cannot rely on that —
     /// it never builds a tree — which is why it counts template depth itself.
     /// </remarks>
+    // Broiler-AI:           Origin=AI; Spec=WHATWG-HTML s4.2.3; IP=Low; Security=Medium; Resources=6; Fingerprint=TBF
+    // Broiler-Falsified-If: a <base> with a non-blank href is passed over in favour of one later in tree order
+    // Broiler-Human:        PENDING
     public static string? GetEffectiveBaseHref(DomNode root)
     {
         ArgumentNullException.ThrowIfNull(root);
@@ -45,6 +54,9 @@ public static class HtmlDocumentQueries
     /// <summary>
     /// Attempts to find the effective document base URL in a DOM tree.
     /// </summary>
+    // Broiler-AI:           Origin=AI; IP=Low; Security=Medium; Resources=6; Fingerprint=TBF
+    // Broiler-Falsified-If: it returns false while GetEffectiveBaseHref finds a base, or true with a null baseHref
+    // Broiler-Human:        PENDING
     public static bool TryGetEffectiveBaseHref(DomNode root, [NotNullWhen(true)] out string? baseHref)
     {
         baseHref = GetEffectiveBaseHref(root);
@@ -56,6 +68,9 @@ public static class HtmlDocumentQueries
     /// <c>href</c> of the first <c>&lt;base&gt;</c> start tag outside of any <c>&lt;template&gt;</c>
     /// that carries a non-whitespace value, trimmed. Returns <see langword="null"/> if none is found.
     /// </summary>
+    // Broiler-AI:           Origin=AI; Spec=WHATWG-HTML s4.2.3; IP=Low; Security=High; Resources=4; Fingerprint=TBF
+    // Broiler-Falsified-If: a <base href> between a <template> start tag and its </template> in the raw source is returned as the base URL
+    // Broiler-Human:        PENDING
     public static string? GetEffectiveBaseHref(string html)
     {
         if (string.IsNullOrEmpty(html) || !html.Contains("<base", StringComparison.OrdinalIgnoreCase))
@@ -96,6 +111,9 @@ public static class HtmlDocumentQueries
     /// <summary>
     /// Attempts to find the effective document base URL in raw HTML source.
     /// </summary>
+    // Broiler-AI:           Origin=AI; IP=Low; Security=High; Resources=4; Fingerprint=TBF
+    // Broiler-Falsified-If: source whose only <base href> sits between <template> and </template> returns true
+    // Broiler-Human:        PENDING
     public static bool TryGetEffectiveBaseHref(string html, [NotNullWhen(true)] out string? baseHref)
     {
         baseHref = GetEffectiveBaseHref(html);
@@ -106,6 +124,9 @@ public static class HtmlDocumentQueries
     /// Determines whether the HTML source begins with a standards-mode DOCTYPE: the first token
     /// that is neither a comment nor ASCII whitespace is a DOCTYPE named <c>html</c> (HTML §13.2.6.4.1).
     /// </summary>
+    // Broiler-AI:           Origin=AI; Spec=WHATWG-HTML s13.2.6.4.1; IP=Low; Security=High; Resources=4; Fingerprint=TBF
+    // Broiler-Falsified-If: source whose first token besides comments and ASCII whitespace is text, such as U+00A0, followed by <!DOCTYPE html> returns true
+    // Broiler-Human:        PENDING
     public static bool HasHtmlDoctype(string html)
     {
         if (string.IsNullOrWhiteSpace(html))

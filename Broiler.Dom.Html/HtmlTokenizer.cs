@@ -5,6 +5,8 @@ using System.Text;
 namespace Broiler.Dom.Html;
 
 /// <summary>Identifies the kind of <see cref="HtmlToken"/>.</summary>
+// Broiler-AI:           Origin=AI; IP=None; Security=None; Resources=0; Fingerprint=TBF
+// Broiler-Human:        PENDING
 public enum TokenType
 {
     /// <summary>A DOCTYPE token.</summary>
@@ -23,6 +25,9 @@ public enum TokenType
 
 /// <summary>A single token emitted by <see cref="HtmlTokenizer"/>.</summary>
 /// <remarks>Creates a new <see cref="HtmlToken"/>.</remarks>
+// Broiler-AI:           Origin=AI; IP=None; Security=Low; Resources=1; Fingerprint=TBF
+// Broiler-Falsified-If: a token constructed with a null attribute map exposes a case-sensitive map, so a lookup for HREF misses an href attribute
+// Broiler-Human:        PENDING
 public sealed class HtmlToken(TokenType type, string? name = null, string? data = null,
     bool selfClosing = false, Dictionary<string, string>? attributes = null,
     string publicId = "", string systemId = "")
@@ -56,9 +61,15 @@ public sealed class HtmlToken(TokenType type, string? name = null, string? data 
 /// Shared between Broiler.HTML rendering, canonical DOM parsing, and the
 /// JavaScript bridge.
 /// </summary>
+// Broiler-AI:           Origin=AI; Spec=WHATWG-HTML s13.2.5; IP=Low; Security=High; Resources=6; Fingerprint=TBF
+// Broiler-Falsified-If: the input <!-- a --!><img src=x onerror=f()>--> becomes one comment token, so the img a spec tokenizer emits after the --!> is hidden in comment data
+// Broiler-Human:        PENDING
 public sealed class HtmlTokenizer
 {
     /// <summary>Tokenizes <paramref name="html"/> into an independent token sequence.</summary>
+    // Broiler-AI:           Origin=AI; IP=None; Security=High; Resources=6; Fingerprint=TBF
+    // Broiler-Falsified-If: <textarea><script>f()</script></textarea> yields a script start tag token instead of textarea text
+    // Broiler-Human:        PENDING
     public IEnumerable<HtmlToken> Tokenize(string html) => TokenizeWith(html, errors: null);
 
     /// <summary>
@@ -74,6 +85,9 @@ public sealed class HtmlTokenizer
     /// Character reference errors are not reported: references are decoded by the platform's decoder,
     /// which does not say what it could not decode.
     /// </remarks>
+    // Broiler-AI:           Origin=AI; IP=None; Security=High; Resources=6; Fingerprint=TBF
+    // Broiler-Falsified-If: the same input yields a different token sequence when an errors collection is passed than when it is null
+    // Broiler-Human:        PENDING
     public IEnumerable<HtmlToken> Tokenize(string html, ICollection<HtmlParseDiagnostic>? errors) =>
         TokenizeWith(html, errors is null ? null : new HtmlParseErrorSink(errors));
 
@@ -81,6 +95,9 @@ public sealed class HtmlTokenizer
     /// Tokenizes <paramref name="html"/>, reporting parse errors to <paramref name="errors"/>, which the
     /// tree builder shares so that its own errors are located against the same input.
     /// </summary>
+    // Broiler-AI:           Origin=AI; IP=Low; Security=High; Resources=6; Fingerprint=TBF
+    // Broiler-Falsified-If: enumerating the returned sequence a second time continues from the first enumeration's position instead of restarting at the start of the input
+    // Broiler-Human:        PENDING
     internal IEnumerable<HtmlToken> TokenizeWith(string html, HtmlParseErrorSink? errors)
     {
         ArgumentNullException.ThrowIfNull(html);
@@ -96,11 +113,19 @@ public sealed class HtmlTokenizer
     /// become a single LF before tokenizing, so a document's text nodes read the same whichever
     /// line endings the file was saved with.
     /// </summary>
+    // Broiler-AI:           Origin=AI; Spec=WHATWG-HTML s13.2.3.5; IP=Low; Security=High; Resources=3; Fingerprint=TBF
+    // Broiler-Falsified-If: a CRLF pair becomes two line feeds, or a lone CR survives into a text token
+    // Broiler-Human:        PENDING
     private static string NormalizeNewlines(string html) =>
         html.Contains('\r') ? html.Replace("\r\n", "\n").Replace('\r', '\n') : html;
 
+    // Broiler-AI:           Origin=AI; IP=Low; Security=High; Resources=6; Fingerprint=TBF
+    // Broiler-Falsified-If: a tag or attribute name spelled with U+212A KELVIN SIGN is lowercased to an ASCII k, so a name a spec tokenizer keeps as unknown arrives as onclick or link
+    // Broiler-Human:        PENDING
     private sealed class Scanner(string input, HtmlParseErrorSink? errors)
     {
+        // Broiler-AI:           Origin=AI; IP=None; Security=None; Resources=0; Fingerprint=TBF
+        // Broiler-Human:        PENDING
         private enum State
         {
             Data,
@@ -161,6 +186,9 @@ public sealed class HtmlTokenizer
         // writes in SVG (`<svg><textarea>`, `<svg><plaintext>`) would swallow what the Standard parses
         // as markup. At an integration point (`<foreignObject>`, `<math><mtext>`, ...) the rules for
         // HTML content apply and this agrees with the Standard.
+        // Broiler-AI:           Origin=AI; Spec=WHATWG-HTML s13.2.6.2; IP=Low; Security=High; Resources=0; Fingerprint=TBF
+        // Broiler-Falsified-If: a textarea or title start tag leaves the tokenizer in the data state, so <title><script> yields a script start tag
+        // Broiler-Human:        PENDING
         private static State TextStateFor(string tagName) => tagName switch
         {
             "title" or "textarea" => State.RcData,
@@ -191,6 +219,9 @@ public sealed class HtmlTokenizer
         private readonly StringBuilder _attributeName = new();
         private bool _selfClose, _isEnd;
 
+        // Broiler-AI:           Origin=AI; Spec=WHATWG-HTML s13.2.5; IP=Low; Security=High; Resources=6; Fingerprint=TBF
+        // Broiler-Falsified-If: the input <!-- a --!><img src=x onerror=f()>--> becomes one comment token, so the img a spec tokenizer emits after the --!> is hidden in comment data
+        // Broiler-Human:        PENDING
         public IEnumerable<HtmlToken> Read()
         {
             while (true)
@@ -864,7 +895,13 @@ public sealed class HtmlTokenizer
             }
         }
 
+        // Broiler-AI:           Origin=AI; IP=None; Security=High; Resources=1; Fingerprint=TBF
+        // Broiler-Falsified-If: the map treats href and HREF as different keys, so a repeated attribute differing only in case replaces the first value
+        // Broiler-Human:        PENDING
         private static Dictionary<string, string> NewAttrs() => new(StringComparer.OrdinalIgnoreCase);
+        // Broiler-AI:           Origin=AI; IP=Low; Security=High; Resources=1; Fingerprint=TBF
+        // Broiler-Falsified-If: an attribute or the self-closing flag of one tag appears on the next tag token
+        // Broiler-Human:        PENDING
         private void Reset(bool end)
         {
             _isEnd = end;
@@ -875,6 +912,9 @@ public sealed class HtmlTokenizer
             _av.Clear();
         }
 
+        // Broiler-AI:           Origin=AI; Spec=WHATWG-HTML s13.2.5; IP=Low; Security=High; Resources=3; Fingerprint=TBF
+        // Broiler-Falsified-If: a repeated attribute replaces the first value, so <a href=x href=y> yields an href of y
+        // Broiler-Human:        PENDING
         private void Flush()
         {
             // An attribute value's character references are decoded here, in the tokenizer, exactly as
@@ -896,6 +936,9 @@ public sealed class HtmlTokenizer
             _av.Clear();
         }
 
+        // Broiler-AI:           Origin=AI; IP=Low; Security=High; Resources=3; Fingerprint=TBF
+        // Broiler-Falsified-If: an end tag such as </textarea> switches the tokenizer into RCDATA, so the markup after it is read as text
+        // Broiler-Human:        PENDING
         private HtmlToken TagTok()
         {
             Flush();
@@ -958,6 +1001,9 @@ public sealed class HtmlTokenizer
         /// <c>OrdinalIgnoreCase</c> and <c>char.IsWhiteSpace</c>, so <c>&lt;/script\v&gt;</c> or a
         /// U+00A0 after the name ended a script there too.
         /// </remarks>
+        // Broiler-AI:           Origin=AI; IP=Low; Security=High; Resources=1; Fingerprint=TBF
+        // Broiler-Falsified-If: a script run ends at </scriptx> or at </script followed by U+00A0
+        // Broiler-Human:        PENDING
         private bool AtAppropriateEndTag()
         {
             var name = _pos + 2;
@@ -975,6 +1021,9 @@ public sealed class HtmlTokenizer
             return _input[terminator] is '\t' or '\n' or '\f' or ' ' or '/' or '>';
         }
 
+        // Broiler-AI:           Origin=AI; IP=Low; Security=High; Resources=3; Fingerprint=TBF
+        // Broiler-Falsified-If: RAWTEXT text containing &lt; is emitted decoded as a less-than sign
+        // Broiler-Human:        PENDING
         private HtmlToken CharTok(bool decode = true)
         {
             var raw = _buf.ToString();
@@ -999,7 +1048,13 @@ public sealed class HtmlTokenizer
         /// <c>title="&amp;copy"</c> stays literal where a browser would resolve it — which is the
         /// same conservative gap this helper already had in character data.
         /// </remarks>
+        // Broiler-AI:           Origin=AI; Spec=WHATWG-HTML s13.2.5; IP=Low; Security=High; Resources=3; Fingerprint=TBF
+        // Broiler-Falsified-If: javascript&colon;alert(1) in an attribute value stays undecoded, where a spec tokenizer resolves the named reference to a colon
+        // Broiler-Human:        PENDING
         private static string DecodeReferences(string value) => value.IndexOf('&') < 0 ? value : System.Net.WebUtility.HtmlDecode(value);
+        // Broiler-AI:           Origin=AI; IP=Low; Security=High; Resources=3; Fingerprint=TBF
+        // Broiler-Falsified-If: the comment buffer is not cleared, so a later comment's data begins with an earlier comment's text
+        // Broiler-Human:        PENDING
         private HtmlToken ComTok()
         {
             var t = new HtmlToken(TokenType.Comment, data: _buf.ToString()) { SourceOffset = _tokenStart };
@@ -1007,29 +1062,49 @@ public sealed class HtmlTokenizer
             return t;
         }
 
+        // Broiler-AI:           Origin=AI; IP=None; Security=Low; Resources=1; Fingerprint=TBF
+        // Broiler-Human:        PENDING
         private HtmlToken Eof() => new(TokenType.EndOfFile) { SourceOffset = _input.Length };
 
         /// <summary>Reports a parse error at <paramref name="at"/>, or where the tokenizer is.</summary>
+        // Broiler-AI:           Origin=AI; IP=None; Security=Medium; Resources=3; Fingerprint=TBF
+        // Broiler-Falsified-If: with no error sink attached, a start tag with a 64,000-character name followed by 64,000 stray quote characters takes seconds, because every discarded message copies the tag name
+        // Broiler-Human:        PENDING
         private void Error(string code, string message, int? at = null) => _errors?.Report(code, message, at ?? _pos);
 
+        // Broiler-AI:           Origin=AI; IP=Low; Security=Low; Resources=3; Fingerprint=TBF
+        // Broiler-Human:        PENDING
         private void EofInTag() =>
             Error("eof-in-tag", $"The input ends inside the <{(_isEnd ? "/" : string.Empty)}{_tag}> tag, which is dropped.", _tokenStart);
 
+        // Broiler-AI:           Origin=AI; IP=Low; Security=Low; Resources=1; Fingerprint=TBF
+        // Broiler-Human:        PENDING
         private void EofInComment() =>
             Error("eof-in-comment", "The input ends inside a comment: everything after '<!--' is the comment.", _tokenStart);
 
         /// <summary>A character as a message can show it: quoted, or by its code point when it would not show.</summary>
+        // Broiler-AI:           Origin=AI; IP=Low; Security=Low; Resources=1; Fingerprint=TBF
+        // Broiler-Human:        PENDING
         private static string Printable(char c) => c switch
         {
             '\'' => "\"'\"",
             _ when char.IsControl(c) || char.IsWhiteSpace(c) => $"U+{(int)c:X4}",
             _ => $"'{c}'",
         };
+        // Broiler-AI:           Origin=AI; IP=Low; Security=High; Resources=1; Fingerprint=TBF
+        // Broiler-Falsified-If: Ahead reads past the end of the input when fewer characters remain than the probe string holds
+        // Broiler-Human:        PENDING
         private bool Ahead(string s) => _pos + s.Length <= _input.Length && _input.AsSpan(_pos, s.Length).SequenceEqual(s.AsSpan());
+        // Broiler-AI:           Origin=AI; IP=Low; Security=High; Resources=1; Fingerprint=TBF
+        // Broiler-Falsified-If: a lower-case <!doctype html> is not recognised as a DOCTYPE and becomes a bogus comment
+        // Broiler-Human:        PENDING
         private bool AheadCI(string s) => _pos + s.Length <= _input.Length && string.Compare(_input, _pos, s, 0, s.Length, StringComparison.OrdinalIgnoreCase) == 0;
         // Reads a DOCTYPE's name into _tag, plus its optional PUBLIC/SYSTEM external-identifier
         // strings (HTML Standard §13.2.5.53-70), then consumes through the closing '>'. Anything
         // unrecognized between the identifiers and '>' is ignored, matching the prior name-only skip.
+        // Broiler-AI:           Origin=AI; IP=Low; Security=High; Resources=3; Fingerprint=TBF
+        // Broiler-Falsified-If: <!DOCTYPE HTML> yields a doctype name other than html, so the tree builder's quirks decision sees a mismatched name
+        // Broiler-Human:        PENDING
         private void ReadDoctype(out string publicId, out string systemId)
         {
             publicId = "";
@@ -1065,6 +1140,9 @@ public sealed class HtmlTokenizer
                 Error("eof-in-doctype", "The input ends inside the DOCTYPE.", _tokenStart);
         }
 
+        // Broiler-AI:           Origin=AI; IP=Low; Security=High; Resources=3; Fingerprint=TBF
+        // Broiler-Falsified-If: SkipWhitespace moves past a greater-than sign or a quote, so a DOCTYPE's identifiers or its end are missed
+        // Broiler-Human:        PENDING
         private void SkipWhitespace()
         {
             while (_pos < _input.Length && char.IsWhiteSpace(_input[_pos]))
@@ -1073,6 +1151,9 @@ public sealed class HtmlTokenizer
 
         // Reads a single- or double-quoted DOCTYPE identifier string (without the quotes).
         // Returns "" when the next character is not a quote.
+        // Broiler-AI:           Origin=AI; IP=Low; Security=High; Resources=3; Fingerprint=TBF
+        // Broiler-Falsified-If: a greater-than sign inside an unterminated quoted public identifier does not end the DOCTYPE, so markup after it is consumed into the identifier
+        // Broiler-Human:        PENDING
         private string ReadDoctypeQuotedString()
         {
             if (_pos >= _input.Length || (_input[_pos] != '"' && _input[_pos] != '\''))
@@ -1092,6 +1173,9 @@ public sealed class HtmlTokenizer
         /// Skips an XML processing instruction (<c>&lt;?...?&gt;</c>), such as
         /// <c>&lt;?xml version="1.0" encoding="UTF-8"?&gt;</c>.
         /// </summary>
+        // Broiler-AI:           Origin=AI; IP=Low; Security=High; Resources=3; Fingerprint=TBF
+        // Broiler-Falsified-If: <?x <img src=x onerror=f()> ?> is skipped past its first greater-than sign, hiding markup a spec tokenizer emits after that bracket
+        // Broiler-Human:        PENDING
         private void SkipProcessingInstruction()
         {
             while (_pos < _input.Length)
