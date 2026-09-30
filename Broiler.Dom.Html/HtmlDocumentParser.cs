@@ -12,6 +12,8 @@ namespace Broiler.Dom.Html;
 /// Where, as an offset into the input after input stream preprocessing (HTML §13.2.3.5), which turns
 /// each CRLF into one LF; <see langword="null"/> when the parse does not locate it.
 /// </param>
+// Broiler-AI:           Origin=AI; IP=None; Security=Low; Resources=0; Fingerprint=TBF
+// Broiler-Human:        PENDING
 public sealed record HtmlParseDiagnostic(string Message, int? SourceOffset = null)
 {
     /// <summary>
@@ -29,11 +31,15 @@ public sealed record HtmlParseDiagnostic(string Message, int? SourceOffset = nul
     public int? Column { get; init; }
 }
 
+// Broiler-AI:           Origin=AI; IP=None; Security=Low; Resources=0; Fingerprint=TBF
+// Broiler-Human:        PENDING
 public sealed record HtmlDocumentParseResult(
     DomDocument Document,
     string Title,
     IReadOnlyList<HtmlParseDiagnostic> Diagnostics);
 
+// Broiler-AI:           Origin=AI; IP=None; Security=Low; Resources=0; Fingerprint=TBF
+// Broiler-Human:        PENDING
 public sealed record HtmlFragmentParseResult(
     DomDocumentFragment Fragment,
     IReadOnlyList<HtmlParseDiagnostic> Diagnostics);
@@ -53,6 +59,9 @@ public sealed record HtmlFragmentParseResult(
 /// sees none of those contexts, so the caller that does supplies the answer, and the default is the
 /// conservative one: markup of unknown provenance does not silently grow shadow trees.
 /// </remarks>
+// Broiler-AI:           Origin=AI; IP=None; Security=High; Resources=0; Fingerprint=TBF
+// Broiler-Falsified-If: a default-constructed HtmlParseOptions reports AllowDeclarativeShadowRoots as true, so markup of unknown provenance grows declarative shadow trees
+// Broiler-Human:        PENDING
 public sealed record HtmlParseOptions(bool AllowDeclarativeShadowRoots = false)
 {
     /// <summary>
@@ -84,6 +93,9 @@ public sealed record HtmlParseOptions(bool AllowDeclarativeShadowRoots = false)
 /// Shared HTML tree builder for the supported WHATWG-aligned subset.
 /// Document and fragment parsing use the same token stream and insertion rules.
 /// </summary>
+// Broiler-AI:           Origin=AI; IP=Low; Security=High; Resources=6; Fingerprint=TBF
+// Broiler-Falsified-If: markup between a <template>'s tags changes the live document, as a <body onload> start tag inside a template sets onload on the document's body
+// Broiler-Human:        PENDING
 public sealed class HtmlDocumentParser
 {
     /// <remarks>
@@ -94,13 +106,22 @@ public sealed class HtmlDocumentParser
     /// cell instead of two, and every frame after the first painted nothing —
     /// <c>DomParser.LayoutFramesetChildren</c> lays out the cells it is given.
     /// </remarks>
+    // Broiler-AI:           Origin=AI; IP=None; Security=High; Resources=1; Fingerprint=TBF
+    // Broiler-Falsified-If: an element the serializer writes with no end tag, such as <wbr>, is pushed as an open element here and takes the following content as children
+    // Broiler-Human:        PENDING
     private static readonly IReadOnlySet<string> VoidElements = HtmlElementNames.VoidElements;
 
+    // Broiler-AI:           Origin=AI; IP=None; Security=High; Resources=1; Fingerprint=TBF
+    // Broiler-Falsified-If: a second <body> start tag creates a new body element instead of carrying its attributes onto the existing one
+    // Broiler-Human:        PENDING
     private static readonly HashSet<string> StructuralTags = new(StringComparer.OrdinalIgnoreCase)
     {
         "html", "head", "body"
     };
 
+    // Broiler-AI:           Origin=AI; IP=None; Security=High; Resources=1; Fingerprint=TBF
+    // Broiler-Falsified-If: a <div> or <img> start tag before any body content is appended to the head instead of the body
+    // Broiler-Human:        PENDING
     private static readonly HashSet<string> HeadMetadataElements = new(StringComparer.OrdinalIgnoreCase)
     {
         "style", "link", "meta", "base", "script", "noscript", "title"
@@ -111,6 +132,9 @@ public sealed class HtmlDocumentParser
     /// input, or the end tag of an element they are in, closes them — the list the "in body" mode
     /// checks at end of input, and the table parts a <c>&lt;/table&gt;</c> closes.
     /// </summary>
+    // Broiler-AI:           Origin=AI; IP=None; Security=Low; Resources=1; Fingerprint=TBF
+    // Broiler-Falsified-If: a <div> left open at end of input goes unreported as unclosed-element while parse errors are reported
+    // Broiler-Human:        PENDING
     private static readonly HashSet<string> OptionalEndTagElements = new(StringComparer.OrdinalIgnoreCase)
     {
         "dd", "dt", "li", "optgroup", "option", "p", "rb", "rp", "rt", "rtc",
@@ -121,6 +145,9 @@ public sealed class HtmlDocumentParser
     /// Elements whose content the tokenizer reads as text up to their end tag. One the input ends
     /// inside is the tokenizer's <c>eof-in-text</c>, so tree construction does not report it again.
     /// </summary>
+    // Broiler-AI:           Origin=AI; IP=None; Security=Low; Resources=1; Fingerprint=TBF
+    // Broiler-Falsified-If: an unterminated <textarea> is reported twice, as eof-in-text and again as unclosed-element
+    // Broiler-Human:        PENDING
     private static readonly HashSet<string> TextElements = new(StringComparer.OrdinalIgnoreCase)
     {
         "title", "textarea", "script", "style", "xmp", "iframe", "noembed", "noframes", "noscript", "plaintext",
@@ -130,6 +157,9 @@ public sealed class HtmlDocumentParser
     /// The SVG and MathML elements whose content is parsed under the rules for HTML content again
     /// (HTML §13.2.6.5, "HTML integration point" and "MathML text integration point").
     /// </summary>
+    // Broiler-AI:           Origin=AI; IP=None; Security=High; Resources=1; Fingerprint=TBF
+    // Broiler-Falsified-If: a start tag inside <svg><foreignObject> is judged to be in foreign content, though that integration point returns its content to HTML
+    // Broiler-Human:        PENDING
     private static readonly HashSet<string> ForeignIntegrationPoints = new(StringComparer.OrdinalIgnoreCase)
     {
         "foreignObject", "desc", "title", "mi", "mo", "mn", "ms", "mtext", "annotation-xml",
@@ -140,22 +170,34 @@ public sealed class HtmlDocumentParser
     /// the MathML and SVG integration points. The list item, button and table scopes below extend or
     /// replace them, as the Standard's do.
     /// </summary>
+    // Broiler-AI:           Origin=AI; Spec=WHATWG-HTML s13.2.4.2; IP=None; Security=High; Resources=1; Fingerprint=TBF
+    // Broiler-Falsified-If: a </div> closes a <div> that lies outside an open <table>, <td> or <template>
+    // Broiler-Human:        PENDING
     private static readonly HashSet<string> ScopeBoundaries = new(StringComparer.OrdinalIgnoreCase)
     {
         "applet", "caption", "html", "table", "td", "th", "marquee", "object", "template",
         "mi", "mo", "mn", "ms", "mtext", "annotation-xml", "foreignObject", "desc", "title",
     };
 
+    // Broiler-AI:           Origin=AI; Spec=WHATWG-HTML s13.2.4.2; IP=None; Security=High; Resources=1; Fingerprint=TBF
+    // Broiler-Falsified-If: a </li> inside a nested <ul> or <ol> closes an <li> of the outer list
+    // Broiler-Human:        PENDING
     private static readonly HashSet<string> ListItemScopeBoundaries = new(ScopeBoundaries, StringComparer.OrdinalIgnoreCase)
     {
         "ol", "ul",
     };
 
+    // Broiler-AI:           Origin=AI; Spec=WHATWG-HTML s13.2.4.2; IP=None; Security=High; Resources=1; Fingerprint=TBF
+    // Broiler-Falsified-If: a </p> inside a <button> closes a <p> that encloses the button instead of inserting an empty paragraph
+    // Broiler-Human:        PENDING
     private static readonly HashSet<string> ButtonScopeBoundaries = new(ScopeBoundaries, StringComparer.OrdinalIgnoreCase)
     {
         "button",
     };
 
+    // Broiler-AI:           Origin=AI; Spec=WHATWG-HTML s13.2.4.2; IP=None; Security=High; Resources=1; Fingerprint=TBF
+    // Broiler-Falsified-If: a </td> or </tr> inside a nested <table> or <template> closes a cell or row of the outer table
+    // Broiler-Human:        PENDING
     private static readonly HashSet<string> TableScopeBoundaries = new(StringComparer.OrdinalIgnoreCase)
     {
         "html", "table", "template",
@@ -165,6 +207,9 @@ public sealed class HtmlDocumentParser
     /// The end tags the "in body" insertion mode acts on only when an element of that name is in
     /// scope (HTML §13.2.6.4.7); the headings are handled with them, each closing any heading.
     /// </summary>
+    // Broiler-AI:           Origin=AI; IP=None; Security=High; Resources=1; Fingerprint=TBF
+    // Broiler-Falsified-If: a </div> whose div still holds an open <p> or <li> is ignored instead of closing them and the div
+    // Broiler-Human:        PENDING
     private static readonly HashSet<string> ScopedEndTags = new(StringComparer.OrdinalIgnoreCase)
     {
         "address", "article", "aside", "blockquote", "button", "center", "details", "dialog", "dir", "div",
@@ -173,12 +218,18 @@ public sealed class HtmlDocumentParser
         "object",
     };
 
+    // Broiler-AI:           Origin=AI; IP=None; Security=High; Resources=1; Fingerprint=TBF
+    // Broiler-Falsified-If: a </h2> leaves an open <h1> open instead of closing it
+    // Broiler-Human:        PENDING
     private static readonly HashSet<string> Headings = new(StringComparer.OrdinalIgnoreCase)
     {
         "h1", "h2", "h3", "h4", "h5", "h6",
     };
 
     /// <summary>The table parts, whose end tags look for their element in table scope.</summary>
+    // Broiler-AI:           Origin=AI; IP=None; Security=High; Resources=1; Fingerprint=TBF
+    // Broiler-Falsified-If: a </tr> whose row still holds an open <td> is ignored instead of closing the cell and the row
+    // Broiler-Human:        PENDING
     private static readonly HashSet<string> TableEndTags = new(StringComparer.OrdinalIgnoreCase)
     {
         "table", "tbody", "tfoot", "thead", "tr", "td", "th", "caption", "colgroup",
@@ -188,6 +239,9 @@ public sealed class HtmlDocumentParser
     /// The formatting elements, whose end tags run the adoption agency algorithm (HTML §13.2.6.4.7).
     /// This builder does not model it, so theirs close the nearest element of the name wherever it is.
     /// </summary>
+    // Broiler-AI:           Origin=AI; Spec=WHATWG-HTML s13.2.4.2; IP=None; Security=High; Resources=1; Fingerprint=TBF
+    // Broiler-Falsified-If: a </b> with an open <div> inside the b is ignored instead of closing the nearest <b>
+    // Broiler-Human:        PENDING
     private static readonly HashSet<string> FormattingElements = new(StringComparer.OrdinalIgnoreCase)
     {
         "a", "b", "big", "code", "em", "font", "i", "nobr", "s", "small", "strike", "strong", "tt", "u",
@@ -197,6 +251,9 @@ public sealed class HtmlDocumentParser
     /// The "special" category (HTML §13.2.4.2), by name: the elements an end tag with no rule of its
     /// own — "any other end tag" — does not reach past.
     /// </summary>
+    // Broiler-AI:           Origin=AI; Spec=WHATWG-HTML s13.2.4.2; IP=None; Security=High; Resources=1; Fingerprint=TBF
+    // Broiler-Falsified-If: a stray </span> reaches past an open <div> or <td> and closes a <span> outside it
+    // Broiler-Human:        PENDING
     private static readonly HashSet<string> SpecialElements = new(StringComparer.OrdinalIgnoreCase)
     {
         "address", "applet", "area", "article", "aside", "base", "basefont", "bgsound", "blockquote", "body",
@@ -210,6 +267,9 @@ public sealed class HtmlDocumentParser
         "mi", "mo", "mn", "ms", "mtext", "annotation-xml", "foreignObject", "desc",
     };
 
+    // Broiler-AI:           Origin=AI; IP=None; Security=High; Resources=1; Fingerprint=TBF
+    // Broiler-Falsified-If: a <div> or <table> start tag while a <p> is the current node nests inside the paragraph instead of closing it
+    // Broiler-Human:        PENDING
     private static readonly HashSet<string> PClosers = new(StringComparer.OrdinalIgnoreCase)
     {
         "address", "article", "aside", "blockquote", "details", "dialog",
@@ -219,11 +279,17 @@ public sealed class HtmlDocumentParser
         "table", "ul"
     };
 
+    // Broiler-AI:           Origin=AI; IP=None; Security=High; Resources=1; Fingerprint=TBF
+    // Broiler-Falsified-If: non-whitespace text whose current node is a table, tbody or tr becomes a child of that element instead of being fostered out
+    // Broiler-Human:        PENDING
     private static readonly HashSet<string> TableElements = new(StringComparer.OrdinalIgnoreCase)
     {
         "table", "thead", "tbody", "tfoot", "tr"
     };
 
+    // Broiler-AI:           Origin=AI; IP=None; Security=High; Resources=1; Fingerprint=TBF
+    // Broiler-Falsified-If: a start tag outside a table's content model, such as <div>, becomes a child of a table, tbody or tr element
+    // Broiler-Human:        PENDING
     private static readonly HashSet<string> TableChildElements = new(StringComparer.OrdinalIgnoreCase)
     {
         "caption", "colgroup", "col", "thead", "tbody", "tfoot", "tr",
@@ -235,6 +301,9 @@ public sealed class HtmlDocumentParser
     /// mode ignores. Not <c>char.IsWhiteSpace</c>: U+00A0, U+000B and U+FEFF are ordinary characters
     /// there, and end the mode.
     /// </summary>
+    // Broiler-AI:           Origin=AI; IP=None; Security=High; Resources=1; Fingerprint=TBF
+    // Broiler-Falsified-If: the set holds a character beyond tab, LF, FF, CR and space, so a leading U+00A0 or U+000B keeps the initial insertion mode and a later DOCTYPE still counts
+    // Broiler-Human:        PENDING
     private static readonly SearchValues<char> AsciiWhitespace = SearchValues.Create("\t\n\f\r ");
 
     /// <remarks>
@@ -245,6 +314,9 @@ public sealed class HtmlDocumentParser
     /// late one (no DocumentType). <c>File.ReadAllText</c> and <c>StreamReader</c> strip it;
     /// <c>Encoding.UTF8.GetString</c> does not.
     /// </remarks>
+    // Broiler-AI:           Origin=AI; IP=Low; Security=High; Resources=6; Fingerprint=TBF
+    // Broiler-Falsified-If: a template whose shadowrootmode is open attaches a shadow root when parsed through this overload, which passes no options
+    // Broiler-Human:        PENDING
     public static HtmlDocumentParseResult ParseDocument(string html, DomDocument? document = null) =>
         ParseDocument(html, document, null);
 
@@ -255,6 +327,9 @@ public sealed class HtmlDocumentParser
     /// Switches the markup does not answer, such as whether declarative shadow roots are allowed.
     /// <see langword="null"/> takes the defaults.
     /// </param>
+    // Broiler-AI:           Origin=AI; IP=Low; Security=High; Resources=6; Fingerprint=TBF
+    // Broiler-Falsified-If: a null options, or one whose AllowDeclarativeShadowRoots is false, still lets a template whose shadowrootmode is open attach a shadow root
+    // Broiler-Human:        PENDING
     public static HtmlDocumentParseResult ParseDocument(string html, DomDocument? document, HtmlParseOptions? options) =>
         ParseDocument(html, document, options, declarativeShadowRootFloor: 0, reportParseErrors: options?.ReportParseErrors == true);
 
@@ -271,6 +346,9 @@ public sealed class HtmlDocumentParser
     /// for a document, never for the synthetic document a fragment is parsed in.
     /// </param>
     /// <inheritdoc cref="ParseDocument(string, DomDocument, HtmlParseOptions)"/>
+    // Broiler-AI:           Origin=AI; IP=Low; Security=High; Resources=6; Fingerprint=TBF
+    // Broiler-Falsified-If: markup between a <template>'s tags changes the live document, as a <body onload> start tag inside a template copies onload onto the document's body
+    // Broiler-Human:        PENDING
     private static HtmlDocumentParseResult ParseDocument(
         string html,
         DomDocument? document,
@@ -608,6 +686,9 @@ public sealed class HtmlDocumentParser
         return new HtmlDocumentParseResult(document, documentTitle?.TextContent.Trim() ?? string.Empty, diagnostics);
     }
 
+    // Broiler-AI:           Origin=AI; IP=Low; Security=High; Resources=6; Fingerprint=TBF
+    // Broiler-Falsified-If: an innerHTML-style parse through this overload attaches a shadow root for a template in the markup whose shadowrootmode is open
+    // Broiler-Human:        PENDING
     public static HtmlFragmentParseResult ParseFragment(string html, string contextTagName) =>
         ParseFragment(html, contextTagName, null);
 
@@ -619,6 +700,9 @@ public sealed class HtmlDocumentParser
     /// <c>setHTMLUnsafe</c> on this path and not to <c>innerHTML</c>, so a caller implementing the
     /// former passes them in and a caller implementing the latter does not.
     /// </param>
+    // Broiler-AI:           Origin=AI; IP=Low; Security=High; Resources=6; Fingerprint=TBF
+    // Broiler-Falsified-If: markup that closes the synthetic context element returns an empty fragment, as a p whose innerHTML is set to '<div>x</div>' gets no div
+    // Broiler-Human:        PENDING
     public static HtmlFragmentParseResult ParseFragment(string html, string contextTagName, HtmlParseOptions? options)
     {
         ArgumentNullException.ThrowIfNull(html);
@@ -645,6 +729,9 @@ public sealed class HtmlDocumentParser
     /// are redirected into that fragment — or, for a template that declared a shadow root, into
     /// the shadow root that became its contents.
     /// </summary>
+    // Broiler-AI:           Origin=AI; Spec=WHATWG-HTML s13.2.6.1; IP=Low; Security=High; Resources=1; Fingerprint=TBF
+    // Broiler-Falsified-If: a node inserted while a <template> or a declarative shadow template is the current node lands in the template element's own child list
+    // Broiler-Human:        PENDING
     private static DomNode InsertionPoint(
         DomElement parent,
         Dictionary<DomElement, DomShadowRoot> shadowContents) =>
@@ -652,12 +739,18 @@ public sealed class HtmlDocumentParser
             ? shadow
             : parent.TemplateContents ?? (DomNode)parent;
 
+    // Broiler-AI:           Origin=AI; IP=None; Security=High; Resources=1; Fingerprint=TBF
+    // Broiler-Falsified-If: DefaultOptions allows declarative shadow roots, so a parse given null options attaches one for a template whose shadowrootmode is open
+    // Broiler-Human:        PENDING
     private static readonly HtmlParseOptions DefaultOptions = new();
 
     /// <summary>
     /// Attribute values that put <c>shadowrootmode</c> in a state other than "none", and the
     /// encapsulation mode each one asks for (HTML §4.12.3).
     /// </summary>
+    // Broiler-AI:           Origin=AI; IP=None; Security=High; Resources=1; Fingerprint=TBF
+    // Broiler-Falsified-If: the value closed maps to an open shadow root, so the host's ShadowRoot property exposes a tree declared closed
+    // Broiler-Human:        PENDING
     private static readonly Dictionary<string, DomShadowRootMode> ShadowRootModes =
         new(StringComparer.OrdinalIgnoreCase)
         {
@@ -682,6 +775,9 @@ public sealed class HtmlDocumentParser
     /// refusing over one template a browser would simply leave alone.
     /// </para>
     /// </remarks>
+    // Broiler-AI:           Origin=AI; Spec=WHATWG-HTML s13.2.6.4.4; IP=Low; Security=High; Resources=3; Fingerprint=TBF
+    // Broiler-Falsified-If: a shadowrootmode value other than open or closed once trimmed, such as none or auto, attaches a shadow root instead of leaving an ordinary template
+    // Broiler-Human:        PENDING
     private static bool TryAttachDeclarativeShadowRoot(
         DomElement intendedParent,
         HtmlToken token,
@@ -721,6 +817,9 @@ public sealed class HtmlDocumentParser
     /// <c>about:legacy-compat</c>. The tokenizer gives an absent identifier as the empty string, so an
     /// empty one written out (<c>PUBLIC ""</c>) counts as absent here.
     /// </summary>
+    // Broiler-AI:           Origin=AI; Spec=WHATWG-HTML s13.2.6.4.1; IP=Low; Security=Low; Resources=1; Fingerprint=TBF
+    // Broiler-Falsified-If: a plain <!DOCTYPE html> with no identifiers is reported as legacy-doctype
+    // Broiler-Human:        PENDING
     private static bool IsLegacyDoctype(HtmlToken token) =>
         !string.Equals(token.Name, "html", StringComparison.Ordinal) ||
         token.PublicId.Length > 0 ||
@@ -734,6 +833,9 @@ public sealed class HtmlDocumentParser
     /// Decided from the open elements' names, innermost first: an <c>svg</c> or <c>math</c> element
     /// is foreign content, and an integration point inside one is HTML content again.
     /// </remarks>
+    // Broiler-AI:           Origin=AI; IP=Low; Security=High; Resources=3; Fingerprint=TBF
+    // Broiler-Falsified-If: a </br> end tag inside an open <svg> is judged HTML content and inserts a <br> element into the SVG subtree
+    // Broiler-Human:        PENDING
     private static bool InForeignContent(Stack<DomElement> openElements, string tag)
     {
         if (tag.Equals("svg", StringComparison.OrdinalIgnoreCase) || tag.Equals("math", StringComparison.OrdinalIgnoreCase))
@@ -754,18 +856,24 @@ public sealed class HtmlDocumentParser
         return false;
     }
 
+    // Broiler-AI:           Origin=AI; IP=Low; Security=Low; Resources=3; Fingerprint=TBF
+    // Broiler-Human:        PENDING
     private static string TrailingSolidusMessage(string tag) =>
         tag.Equals("title", StringComparison.OrdinalIgnoreCase)
             ? "<title/> is not a void element: the '/' is ignored and the title stays open."
             : $"<{tag}/> is not a void element: a browser ignores the '/' and leaves the element open, where this " +
               "parser closes it at once, so the content after it can end up in a different parent.";
 
+    // Broiler-AI:           Origin=AI; IP=Low; Security=Low; Resources=3; Fingerprint=TBF
+    // Broiler-Human:        PENDING
     private static string VoidEndTagMessage(string tag) =>
         tag.Equals("br", StringComparison.OrdinalIgnoreCase)
             ? "</br> is read as <br>, a line break, as a browser reads it."
             : $"</{tag}> ends a void element, which has no end tag; it is ignored.";
 
     /// <summary>What an end tag does to the stack of open elements.</summary>
+    // Broiler-AI:           Origin=AI; IP=None; Security=None; Resources=0; Fingerprint=TBF
+    // Broiler-Human:        PENDING
     private enum EndTagOutcome
     {
         /// <summary>Pops <see cref="EndTagPlan.PopCount"/> elements, the one it names last.</summary>
@@ -786,6 +894,8 @@ public sealed class HtmlDocumentParser
     /// <param name="Target">The element it closes, or the one out of its reach.</param>
     /// <param name="Blocker">The element it does not reach past, for <see cref="EndTagOutcome.OutOfScope"/>.</param>
     /// <param name="StillOpen">The elements without an optional end tag a close pops on its way.</param>
+    // Broiler-AI:           Origin=AI; IP=None; Security=Low; Resources=0; Fingerprint=TBF
+    // Broiler-Human:        PENDING
     private readonly record struct EndTagPlan(
         EndTagOutcome Outcome,
         int PopCount = 0,
@@ -815,6 +925,9 @@ public sealed class HtmlDocumentParser
     /// outside them, where a browser ignores the tag.
     /// </para>
     /// </remarks>
+    // Broiler-AI:           Origin=AI; Spec=WHATWG-HTML s13.2.6.4.7; IP=Low; Security=High; Resources=3; Fingerprint=TBF
+    // Broiler-Falsified-If: an end tag closes an element at or below the floor, so a div whose innerHTML is set to 'a</div>b' loses its b to the wrapper
+    // Broiler-Human:        PENDING
     private static EndTagPlan PlanEndTag(Stack<DomElement> openElements, string tag, int floor)
     {
         var heading = Headings.Contains(tag);
@@ -864,6 +977,9 @@ public sealed class HtmlDocumentParser
     /// builder ignores or stands in for. Elements with an optional end tag are closed without a
     /// report, as the Standard's implied end tags close them.
     /// </summary>
+    // Broiler-AI:           Origin=AI; IP=Low; Security=Low; Resources=3; Fingerprint=TBF
+    // Broiler-Falsified-If: an end tag that closes exactly its own element with nothing else open inside it is reported as a parse error
+    // Broiler-Human:        PENDING
     private static void ReportEndTag(HtmlParseErrorSink errors, EndTagPlan plan, string tag, int offset)
     {
         switch (plan.Outcome)
@@ -894,6 +1010,8 @@ public sealed class HtmlDocumentParser
     /// Reports each element still open at end of input whose end tag is not optional, at its start
     /// tag — outermost first — or at the end of the input for one whose start tag was implied.
     /// </summary>
+    // Broiler-AI:           Origin=AI; IP=Low; Security=Low; Resources=3; Fingerprint=TBF
+    // Broiler-Human:        PENDING
     private static void ReportUnclosedElements(
         HtmlParseErrorSink errors,
         Stack<DomElement> openElements,
@@ -912,6 +1030,8 @@ public sealed class HtmlDocumentParser
     }
 
     /// <summary>A few element names for a message: the first five, and how many more.</summary>
+    // Broiler-AI:           Origin=AI; IP=Low; Security=Low; Resources=3; Fingerprint=TBF
+    // Broiler-Human:        PENDING
     private static string ListElements(List<string> names)
     {
         var shown = string.Join(", ", names.Take(5).Select(name => $"<{name}>"));
@@ -925,6 +1045,9 @@ public sealed class HtmlDocumentParser
     /// inert fragment the Standard just put it in — and, for a <c>&lt;title&gt;</c>, make markup
     /// that renders nothing the document's title.
     /// </remarks>
+    // Broiler-AI:           Origin=AI; IP=Low; Security=High; Resources=3; Fingerprint=TBF
+    // Broiler-Falsified-If: a <title> inside a <template> that is not the current node, as in <template><div><title>, is moved into the document head
+    // Broiler-Human:        PENDING
     private static bool IsInTemplate(Stack<DomElement> openElements)
     {
         foreach (var element in openElements)
@@ -936,6 +1059,9 @@ public sealed class HtmlDocumentParser
         return false;
     }
 
+    // Broiler-AI:           Origin=AI; IP=Low; Security=High; Resources=3; Fingerprint=TBF
+    // Broiler-Falsified-If: a tag name holding U+212A KELVIN SIGN, such as lin followed by that sign, yields an element whose local name is the ASCII link
+    // Broiler-Human:        PENDING
     private static DomElement CreateElement(DomDocument document, HtmlToken token)
     {
         var element = document.CreateElement(token.Name ?? throw new InvalidOperationException("A start tag must have a name."));
@@ -943,6 +1069,9 @@ public sealed class HtmlDocumentParser
         return element;
     }
 
+    // Broiler-AI:           Origin=AI; IP=Low; Security=High; Resources=3; Fingerprint=TBF
+    // Broiler-Falsified-If: a second <body> or <html> start tag overwrites an attribute the element already has instead of only adding missing ones
+    // Broiler-Human:        PENDING
     private static void CopyAttributes(DomElement element, HtmlToken token)
     {
         foreach (var (name, value) in token.Attributes)
@@ -969,6 +1098,9 @@ public sealed class HtmlDocumentParser
     /// the mode, rather than the bogus comment that would keep it. A DOCTYPE after either is ignored.
     /// </para>
     /// </remarks>
+    // Broiler-AI:           Origin=AI; Spec=WHATWG-HTML s13.2.6.4.1; IP=Low; Security=High; Resources=3; Fingerprint=TBF
+    // Broiler-Falsified-If: a character token holding U+00A0 or U+FEFF keeps the initial insertion mode, so a later DOCTYPE still becomes the DocumentType
+    // Broiler-Human:        PENDING
     private static bool StaysInInitialInsertionMode(HtmlToken token) => token.Type switch
     {
         TokenType.Comment => true,
@@ -976,6 +1108,9 @@ public sealed class HtmlDocumentParser
         _ => false,
     };
 
+    // Broiler-AI:           Origin=AI; IP=Low; Security=High; Resources=1; Fingerprint=TBF
+    // Broiler-Falsified-If: a <tr> start tag while a cell of the previous row is open nests the new row inside that row instead of closing both
+    // Broiler-Human:        PENDING
     private static void AutoCloseCurrent(Stack<DomElement> openElements, string incomingTag)
     {
         if (openElements.Count == 0)
@@ -1005,6 +1140,9 @@ public sealed class HtmlDocumentParser
     /// it again. The reverse case, a template <em>below</em> the table, needs nothing: a template
     /// is then the current node, which is not a table, so nothing is fostered at all.
     /// </remarks>
+    // Broiler-AI:           Origin=AI; Spec=WHATWG-HTML s13.2.6.1; IP=Low; Security=High; Resources=3; Fingerprint=TBF
+    // Broiler-Falsified-If: fostered content, such as text between <table> and <tr>, is placed after the table in its parent rather than immediately before it
+    // Broiler-Human:        PENDING
     private static DomNode FosterParent(Stack<DomElement> openElements, DomElement body)
     {
         foreach (var element in openElements)
@@ -1015,6 +1153,9 @@ public sealed class HtmlDocumentParser
         return body;
     }
 
+    // Broiler-AI:           Origin=AI; IP=Low; Security=High; Resources=6; Fingerprint=TBF
+    // Broiler-Falsified-If: an element the markup created is returned ahead of the wrapper's context element of the same name
+    // Broiler-Human:        PENDING
     private static DomElement? FindContextElement(DomDocument document, string contextTagName) =>
         document
             .Descendants()
@@ -1059,6 +1200,9 @@ public sealed class HtmlDocumentParser
     /// tells the tree builder where the caller's markup begins, which is the only thing that
     /// distinguishes the context element from an element the input opened itself.
     /// </returns>
+    // Broiler-AI:           Origin=AI; IP=Low; Security=High; Resources=3; Fingerprint=TBF
+    // Broiler-Falsified-If: a context name that does not tokenize as a start tag, such as _x, opens no context element, and the fragment then holds the wrapper's '<_x>' text
+    // Broiler-Human:        PENDING
     private static (string Wrapper, int ContextDepth) BuildFragmentDocument(string contextTag, string html) => contextTag switch
     {
         "html" => ($"<html>{html}", 1),

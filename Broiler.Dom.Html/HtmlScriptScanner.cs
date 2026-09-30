@@ -6,6 +6,8 @@ namespace Broiler.Dom.Html;
 
 /// <summary>One discovered <c>&lt;script&gt;</c> element: its parsed (lower-cased)
 /// attribute map and its raw, never-entity-decoded body text.</summary>
+// Broiler-AI:           Origin=AI; IP=None; Security=Low; Resources=0; Fingerprint=TBF
+// Broiler-Human:        PENDING
 public readonly record struct HtmlScriptTag(IReadOnlyDictionary<string, string> Attributes, string RawContent);
 
 /// <summary>
@@ -20,6 +22,9 @@ public readonly record struct HtmlScriptTag(IReadOnlyDictionary<string, string> 
 /// HtmlBridge script-extraction service, which now layers CSP/nonce gating, module
 /// classification, and external fetching on top of this primitive.
 /// </remarks>
+// Broiler-AI:           Origin=AI; IP=Low; Security=High; Resources=4; Fingerprint=TBF
+// Broiler-Falsified-If: a script element inside a template element is yielded as a document script although template content never runs
+// Broiler-Human:        PENDING
 public static class HtmlScriptScanner
 {
     /// <summary>
@@ -28,6 +33,9 @@ public static class HtmlScriptScanner
     /// its end tag; an unterminated final script yields its content to end-of-input (matching
     /// parser behaviour).
     /// </summary>
+    // Broiler-AI:           Origin=AI; IP=Low; Security=High; Resources=4; Fingerprint=TBF
+    // Broiler-Falsified-If: a script element inside a template element is yielded as a document script although template content never runs
+    // Broiler-Human:        PENDING
     public static IEnumerable<HtmlScriptTag> EnumerateScripts(string html)
     {
         HtmlToken? open = null;

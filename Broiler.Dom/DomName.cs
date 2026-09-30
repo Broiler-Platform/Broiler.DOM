@@ -2,8 +2,14 @@ using System;
 
 namespace Broiler.Dom;
 
+// Broiler-AI:           Origin=AI; IP=Low; Security=High; Resources=3; Fingerprint=TBF
+// Broiler-Falsified-If: the namespace-aware constructor accepts a qualified name with more than one colon, splitting off a local name that still holds a colon
+// Broiler-Human:        PENDING
 public readonly record struct DomName
 {
+    // Broiler-AI:           Origin=AI; IP=Low; Security=High; Resources=3; Fingerprint=TBF
+    // Broiler-Falsified-If: an unprefixed name other than xmlns, such as foo, is accepted in the XMLNS namespace instead of raising NamespaceError
+    // Broiler-Human:        PENDING
     public DomName(string? namespaceUri, string qualifiedName)
     {
         if (string.IsNullOrWhiteSpace(qualifiedName))
@@ -42,10 +48,15 @@ public readonly record struct DomName
 
     // Distinguishes the non-splitting constructor below from the namespace-aware
     // one, which has the same parameter types.
+    // Broiler-AI:           Origin=AI; IP=None; Security=None; Resources=0; Fingerprint=TBF
+    // Broiler-Human:        PENDING
     private enum Unsplit { Name }
 
     // Non-splitting constructor: the whole name is the local name, with no
     // prefix processing; the namespace is taken as given (used by CreateLocal).
+    // Broiler-AI:           Origin=AI; IP=None; Security=Medium; Resources=0; Fingerprint=TBF
+    // Broiler-Falsified-If: an empty namespace URI is stored as the empty string rather than null, so the name compares unequal to the same name created with a null namespace
+    // Broiler-Human:        PENDING
     private DomName(string? namespaceUri, string localName, Unsplit _)
     {
         LocalName = localName;
@@ -63,6 +74,9 @@ public readonly record struct DomName
     /// literally "xlink:href" (no namespace) rather than throwing. The
     /// namespace-aware constructor is for <c>setAttributeNS</c>.
     /// </summary>
+    // Broiler-AI:           Origin=AI; IP=None; Security=Medium; Resources=3; Fingerprint=TBF
+    // Broiler-Falsified-If: a local name holding a colon, such as xlink:href, comes back with a prefix or a namespace
+    // Broiler-Human:        PENDING
     public static DomName CreateLocal(string localName) => CreateLocal(null, localName);
 
     /// <summary>
@@ -74,6 +88,9 @@ public readonly record struct DomName
     /// rejects a colon; only <c>createElementNS</c> does namespace-aware validation
     /// (the constructor above).
     /// </summary>
+    // Broiler-AI:           Origin=AI; IP=Low; Security=Medium; Resources=3; Fingerprint=TBF
+    // Broiler-Falsified-If: a local name holding a colon, such as xlink:href, is split into a prefix and a local name instead of being kept whole
+    // Broiler-Human:        PENDING
     public static DomName CreateLocal(string? namespaceUri, string localName)
     {
         if (string.IsNullOrWhiteSpace(localName))
@@ -90,11 +107,29 @@ public readonly record struct DomName
     public string QualifiedName { get; }
 }
 
+// Broiler-AI:           Origin=AI; IP=None; Security=High; Resources=0; Fingerprint=TBF
+// Broiler-Falsified-If: one of the five URIs differs from its published namespace name, so the namespace checks and the parser's namespace decisions disagree with names created by script
+// Broiler-Human:        PENDING
 public static class DomNamespaces
 {
+    // Broiler-AI:           Origin=AI; IP=None; Security=High; Resources=0; Fingerprint=TBF
+    // Broiler-Falsified-If: Html differs by any character from http://www.w3.org/1999/xhtml, so an element created with that URI through CreateElementNS is not treated as an HTML element
+    // Broiler-Human:        PENDING
     public const string Html = "http://www.w3.org/1999/xhtml";
+    // Broiler-AI:           Origin=AI; IP=None; Security=High; Resources=0; Fingerprint=TBF
+    // Broiler-Falsified-If: Svg differs by any character from http://www.w3.org/2000/svg, so an element created with that URI through CreateElementNS is not treated as an SVG element
+    // Broiler-Human:        PENDING
     public const string Svg = "http://www.w3.org/2000/svg";
+    // Broiler-AI:           Origin=AI; IP=None; Security=High; Resources=0; Fingerprint=TBF
+    // Broiler-Falsified-If: MathMl differs by any character from http://www.w3.org/1998/Math/MathML, so an element created with that URI through CreateElementNS is not treated as a MathML element
+    // Broiler-Human:        PENDING
     public const string MathMl = "http://www.w3.org/1998/Math/MathML";
+    // Broiler-AI:           Origin=AI; IP=None; Security=High; Resources=0; Fingerprint=TBF
+    // Broiler-Falsified-If: Xml differs by any character from http://www.w3.org/XML/1998/namespace, so the xml prefix is refused with the XML namespace or accepted with another
+    // Broiler-Human:        PENDING
     public const string Xml = "http://www.w3.org/XML/1998/namespace";
+    // Broiler-AI:           Origin=AI; IP=None; Security=High; Resources=0; Fingerprint=TBF
+    // Broiler-Falsified-If: Xmlns differs by any character from http://www.w3.org/2000/xmlns/, trailing slash included, so the xmlns prefix is refused with the XMLNS namespace or accepted with another
+    // Broiler-Human:        PENDING
     public const string Xmlns = "http://www.w3.org/2000/xmlns/";
 }

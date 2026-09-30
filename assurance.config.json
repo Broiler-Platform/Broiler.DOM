@@ -1,0 +1,24 @@
+{
+  "$comment": "Per-declaration assurance for Broiler.DOM. Product projects only: the two shipping libraries Broiler.Dom and Broiler.Dom.Html. Broiler.Dom.Tests and Broiler.Dom.Html.Tests are not listed, so they are not covered. No tracked source is generated (the [GeneratedRegex] bodies are written to obj/ at build time and are never walked), so nothing is excluded. No source here is third-party-derived (docs/dom-ip-licensing-register.md, DOM-IP-003/004 and DOM-SRC-001), so there are no spdxOverrides. HUMAN_REVIEW.md is the hand-written, revision-scoped release record and is left untouched; the per-unit record is written to HUMAN_REVIEW.units.md.",
+  "schema": 1,
+  "component": "Broiler.DOM",
+  "projects": [
+    "Broiler.Dom/Broiler.Dom.csproj",
+    "Broiler.Dom.Html/Broiler.Dom.Html.csproj"
+  ],
+  "exclude": [],
+  "exemptionPredicate": "owning-component",
+  "spdx": {
+    "copyright": [ "2026 Broiler Platform contributors" ],
+    "license": "Apache-2.0"
+  },
+  "spdxOverrides": [],
+  "artefacts": {
+    "report": "CODE-ASSURANCE.md",
+    "humanReview": "HUMAN_REVIEW.units.md",
+    "manifest": "assurance.manifest.json"
+  },
+  "forbidDirectives": false,
+  "forgeryVocabulary": "narrow",
+  "regenerateCommand": "dotnet run --project Broiler.Code/src/Broiler.Code.Review.Cli -c Release -- assurance generate --root Broiler.DOM"
+}

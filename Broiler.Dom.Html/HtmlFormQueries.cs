@@ -10,8 +10,14 @@ namespace Broiler.Dom.Html;
 /// Includes form owner resolution, form controls collection, radio group discovery,
 /// control disablement checks, and default value/checked reflection.
 /// </summary>
+// Broiler-AI:           Origin=AI; IP=Low; Security=Medium; Resources=6; Fingerprint=TBF
+// Broiler-Falsified-If: a control whose form attribute names another form's id is listed among this form's controls
+// Broiler-Human:        PENDING
 public static class HtmlFormQueries
 {
+    // Broiler-AI:           Origin=AI; IP=None; Security=Medium; Resources=0; Fingerprint=TBF
+    // Broiler-Falsified-If: a button, output or object element is missing from the set and so is left out of its form's controls
+    // Broiler-Human:        PENDING
     private static readonly HashSet<string> ListedControlTags = new(StringComparer.OrdinalIgnoreCase)
     {
         "button", "fieldset", "input", "object", "output", "select", "textarea"
@@ -21,6 +27,9 @@ public static class HtmlFormQueries
     /// Checks whether <paramref name="element"/> is a listed form-associated control (HTML §4.10.1.1:
     /// <c>button</c>, <c>fieldset</c>, <c>input</c>, <c>object</c>, <c>output</c>, <c>select</c>, <c>textarea</c>).
     /// </summary>
+    // Broiler-AI:           Origin=AI; IP=Low; Security=Medium; Resources=1; Fingerprint=TBF
+    // Broiler-Falsified-If: a select or textarea whose tag name is upper case is not reported as a listed control
+    // Broiler-Human:        PENDING
     public static bool IsListedFormControl(DomElement element)
     {
         ArgumentNullException.ThrowIfNull(element);
@@ -30,6 +39,9 @@ public static class HtmlFormQueries
     /// <summary>
     /// Checks whether <paramref name="element"/> is an <c>&lt;input type="radio"&gt;</c>.
     /// </summary>
+    // Broiler-AI:           Origin=AI; IP=Low; Security=Medium; Resources=1; Fingerprint=TBF
+    // Broiler-Falsified-If: an input whose type attribute is 'RADIO' in upper case is not reported as a radio
+    // Broiler-Human:        PENDING
     public static bool IsRadioInput(DomElement element)
     {
         ArgumentNullException.ThrowIfNull(element);
@@ -40,6 +52,9 @@ public static class HtmlFormQueries
     /// <summary>
     /// Checks whether <paramref name="element"/> is an <c>&lt;input type="checkbox"&gt;</c>.
     /// </summary>
+    // Broiler-AI:           Origin=AI; IP=Low; Security=Medium; Resources=1; Fingerprint=TBF
+    // Broiler-Falsified-If: an input whose type attribute is 'CHECKBOX' in upper case is not reported as a checkbox
+    // Broiler-Human:        PENDING
     public static bool IsCheckboxInput(DomElement element)
     {
         ArgumentNullException.ThrowIfNull(element);
@@ -52,6 +67,9 @@ public static class HtmlFormQueries
     /// Checks the <c>form</c> content attribute first (resolving against document/tree ID),
     /// falling back to the nearest ancestor <c>&lt;form&gt;</c> element.
     /// </summary>
+    // Broiler-AI:           Origin=AI; IP=Low; Security=Medium; Resources=5; Fingerprint=TBF
+    // Broiler-Falsified-If: a disconnected control that carries a form attribute and sits inside a form gets no owner instead of that ancestor form
+    // Broiler-Human:        PENDING
     public static DomElement? GetFormOwner(DomElement control)
     {
         ArgumentNullException.ThrowIfNull(control);
@@ -93,6 +111,9 @@ public static class HtmlFormQueries
     /// Collects all listed elements associated with <paramref name="form"/> in tree order (HTML §4.10.3).
     /// Includes both descendants belonging to the form and external elements referencing this form by id.
     /// </summary>
+    // Broiler-AI:           Origin=AI; IP=Low; Security=Medium; Resources=6; Fingerprint=TBF
+    // Broiler-Falsified-If: a listed control outside the form that names it through its form attribute is left out of the returned list
+    // Broiler-Human:        PENDING
     public static List<DomElement> GetFormElements(DomElement form, Func<DomElement, bool>? isCustomFormAssociated = null)
     {
         ArgumentNullException.ThrowIfNull(form);
@@ -117,6 +138,9 @@ public static class HtmlFormQueries
     /// Members of a radio group share the same non-empty name attribute and the same form owner
     /// (or both have no form owner within the same root tree).
     /// </summary>
+    // Broiler-AI:           Origin=AI; Spec=WHATWG-HTML s4.10.5.1.16; IP=Low; Security=Medium; Resources=6; Fingerprint=TBF
+    // Broiler-Falsified-If: a radio with the same name but a different form owner is returned as part of the group
+    // Broiler-Human:        PENDING
     public static List<DomElement> GetRadioGroupElements(DomElement radio)
     {
         ArgumentNullException.ThrowIfNull(radio);
@@ -148,6 +172,9 @@ public static class HtmlFormQueries
     /// Checks whether <paramref name="control"/> is disabled by its own <c>disabled</c> attribute
     /// or by an ancestor <c>&lt;fieldset disabled&gt;</c> (HTML §4.10.15).
     /// </summary>
+    // Broiler-AI:           Origin=AI; IP=Low; Security=Medium; Resources=3; Fingerprint=TBF
+    // Broiler-Falsified-If: an input inside a span within the first legend of a disabled fieldset is reported disabled
+    // Broiler-Human:        PENDING
     public static bool IsFormControlDisabled(DomElement control)
     {
         ArgumentNullException.ThrowIfNull(control);
@@ -179,6 +206,9 @@ public static class HtmlFormQueries
     /// Gets the default value of <paramref name="control"/>: child text content for <c>&lt;textarea&gt;</c>,
     /// or the <c>value</c> content attribute for other controls (HTML §4.10.11, §4.10.5.1.1).
     /// </summary>
+    // Broiler-AI:           Origin=AI; IP=Low; Security=Medium; Resources=3; Fingerprint=TBF
+    // Broiler-Falsified-If: a textarea's default value includes text from a nested element or a comment rather than only its direct text children
+    // Broiler-Human:        PENDING
     public static string GetDefaultValue(DomElement control)
     {
         ArgumentNullException.ThrowIfNull(control);
@@ -199,6 +229,9 @@ public static class HtmlFormQueries
     /// <summary>
     /// Gets the default checked state of <paramref name="control"/> (whether it carries a <c>checked</c> content attribute).
     /// </summary>
+    // Broiler-AI:           Origin=AI; IP=Low; Security=Medium; Resources=1; Fingerprint=TBF
+    // Broiler-Falsified-If: an input whose checked attribute is present but empty reports unchecked by default
+    // Broiler-Human:        PENDING
     public static bool GetDefaultChecked(DomElement control)
     {
         ArgumentNullException.ThrowIfNull(control);

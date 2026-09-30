@@ -4,16 +4,24 @@ using System.Collections.ObjectModel;
 
 namespace Broiler.Dom;
 
+// Broiler-AI:           Origin=AI; IP=Low; Security=Medium; Resources=4; Fingerprint=TBF
+// Broiler-Falsified-If: an attribute write or removal leaves the document id index disagreeing with the id attribute, so GetElementById returns an element whose Id is not the requested value
+// Broiler-Human:        PENDING
 public class DomElement : DomNode
 {
     private readonly Dictionary<(string? NamespaceUri, string LocalName), DomAttribute> _attributes = [];
     private readonly ReadOnlyDictionary<(string? NamespaceUri, string LocalName), DomAttribute> _readOnlyAttributes;
 
+    // Broiler-AI:           Origin=AI; IP=None; Security=Medium; Resources=1; Fingerprint=TBF
+    // Broiler-Human:        PENDING
     internal DomElement(DomDocument ownerDocument, DomName name)
         : this(ownerDocument, name, DomNodeType.Element)
     {
     }
 
+    // Broiler-AI:           Origin=AI; IP=Low; Security=Medium; Resources=1; Fingerprint=TBF
+    // Broiler-Falsified-If: an HTML template element is created with null TemplateContents, or a non-template element with a fragment
+    // Broiler-Human:        PENDING
     protected DomElement(DomDocument ownerDocument, DomName name, DomNodeType nodeType)
         : base(nodeType, ownerDocument)
     {
@@ -42,6 +50,9 @@ public class DomElement : DomNode
     /// </remarks>
     public DomDocumentFragment? TemplateContents { get; }
 
+    // Broiler-AI:           Origin=AI; IP=Low; Security=Medium; Resources=0; Fingerprint=TBF
+    // Broiler-Falsified-If: an SVG or MathML element with local name template is treated as an HTML template
+    // Broiler-Human:        PENDING
     private static bool IsHtmlTemplateName(DomName name) =>
         string.Equals(name.NamespaceUri, DomNamespaces.Html, StringComparison.Ordinal) &&
         string.Equals(name.LocalName, "template", StringComparison.Ordinal);
@@ -50,6 +61,8 @@ public class DomElement : DomNode
 
     public string LocalName => Name.LocalName;
 
+    // Broiler-AI:           Origin=AI; IP=None; Security=Medium; Resources=0; Fingerprint=TBF
+    // Broiler-Human:        PENDING
     public string TagName => Name.QualifiedName;
 
     /// <summary>The namespace prefix of the element's qualified name, or <c>null</c>.</summary>
@@ -57,17 +70,30 @@ public class DomElement : DomNode
 
     public string? NamespaceUri => Name.NamespaceUri;
 
+    // Broiler-AI:           Origin=AI; IP=None; Security=Medium; Resources=0; Fingerprint=TBF
+    // Broiler-Human:        PENDING
     protected void SetName(DomName name) => Name = name;
 
+    // Broiler-AI:           Origin=AI; IP=None; Security=Medium; Resources=4; Fingerprint=TBF
+    // Broiler-Falsified-If: an empty-string namespace misses an attribute stored with no namespace
+    // Broiler-Human:        PENDING
     public bool RemoveAttributeNS(string? namespaceUri, string localName) =>
     RemoveAttributeCore(NormalizeNamespace(namespaceUri), localName);
 
+    // Broiler-AI:           Origin=AI; IP=None; Security=Medium; Resources=4; Fingerprint=TBF
+    // Broiler-Falsified-If: a prefixed qualified name with no namespace is stored instead of throwing a DomException named NamespaceError
+    // Broiler-Human:        PENDING
     public void SetAttributeNS(string? namespaceUri, string qualifiedName, string value) =>
     SetAttributeCore(new DomName(namespaceUri, qualifiedName), value);
 
+    // Broiler-AI:           Origin=AI; IP=None; Security=Medium; Resources=0; Fingerprint=TBF
+    // Broiler-Human:        PENDING
     public IReadOnlyDictionary<(string? NamespaceUri, string LocalName), DomAttribute> Attributes =>
         _readOnlyAttributes;
 
+    // Broiler-AI:           Origin=AI; IP=Low; Security=Medium; Resources=4; Fingerprint=TBF
+    // Broiler-Falsified-If: setting Id to null leaves an id attribute in place or the element still findable by GetElementById
+    // Broiler-Human:        PENDING
     public string? Id
     {
         get => GetAttribute("id");
@@ -80,6 +106,9 @@ public class DomElement : DomNode
         }
     }
 
+    // Broiler-AI:           Origin=AI; IP=Low; Security=Medium; Resources=4; Fingerprint=TBF
+    // Broiler-Falsified-If: setting ClassName to null leaves a class attribute on the element
+    // Broiler-Human:        PENDING
     public string? ClassName
     {
         get => GetAttribute("class");
@@ -92,20 +121,31 @@ public class DomElement : DomNode
         }
     }
 
+    // Broiler-AI:           Origin=AI; IP=None; Security=Medium; Resources=2; Fingerprint=TBF
+    // Broiler-Human:        PENDING
     public bool HasAttribute(string qualifiedName) => GetAttribute(qualifiedName) is not null;
 
+    // Broiler-AI:           Origin=AI; IP=Low; Security=Medium; Resources=2; Fingerprint=TBF
+    // Broiler-Falsified-If: GetAttribute with a mixed-case name misses an attribute that SetAttribute stored under the same name
+    // Broiler-Human:        PENDING
     public string? GetAttribute(string qualifiedName)
     {
         var key = (NamespaceUri: (string?)null, LocalName: qualifiedName.ToLowerInvariant());
         return _attributes.TryGetValue(key, out var attribute) ? attribute.Value : null;
     }
 
+    // Broiler-AI:           Origin=AI; IP=Low; Security=Medium; Resources=2; Fingerprint=TBF
+    // Broiler-Falsified-If: an empty-string namespace misses an attribute stored with no namespace
+    // Broiler-Human:        PENDING
     public string? GetAttributeNS(string? namespaceUri, string localName)
     {
         var key = (NormalizeNamespace(namespaceUri), localName);
         return _attributes.TryGetValue(key, out var attribute) ? attribute.Value : null;
     }
 
+    // Broiler-AI:           Origin=AI; IP=Low; Security=Medium; Resources=4; Fingerprint=TBF
+    // Broiler-Falsified-If: a name containing U+212A KELVIN SIGN is folded to ASCII k, so onclic followed by that sign is stored as the onclick attribute
+    // Broiler-Human:        PENDING
     public void SetAttribute(string qualifiedName, string value) =>
         // Per DOM, Element.setAttribute() does NO namespace splitting: the whole
         // qualified name is the attribute's local name (no namespace). This also
@@ -113,6 +153,9 @@ public class DomElement : DomNode
         // throwing on prefixed names like SVG's "xlink:href".
         SetAttributeCore(DomName.CreateLocal(qualifiedName.ToLowerInvariant()), value);
 
+    // Broiler-AI:           Origin=AI; IP=Low; Security=Medium; Resources=4; Fingerprint=TBF
+    // Broiler-Falsified-If: RemoveAttribute with a mixed-case name leaves in place the attribute SetAttribute stored for it
+    // Broiler-Human:        PENDING
     public bool RemoveAttribute(string qualifiedName) =>
         RemoveAttributeCore(null, qualifiedName.ToLowerInvariant());
 
@@ -120,6 +163,9 @@ public class DomElement : DomNode
     /// Attempts to retrieve an attribute by its qualified name using ASCII case-insensitive comparison.
     /// Yields <c>string.Empty</c> when absent.
     /// </summary>
+    // Broiler-AI:           Origin=AI; IP=Low; Security=Medium; Resources=3; Fingerprint=TBF
+    // Broiler-Falsified-If: an attribute whose qualified name differs only in ASCII case from the query is not found
+    // Broiler-Human:        PENDING
     public bool TryGetAttributeByQualifiedName(string qualifiedName, out string value)
     {
         ArgumentNullException.ThrowIfNull(qualifiedName);
@@ -141,12 +187,16 @@ public class DomElement : DomNode
     /// Retrieves an attribute value by qualified name using ASCII case-insensitive comparison,
     /// or <c>null</c> if absent.
     /// </summary>
+    // Broiler-AI:           Origin=AI; IP=None; Security=Medium; Resources=3; Fingerprint=TBF
+    // Broiler-Human:        PENDING
     public string? GetAttributeByQualifiedName(string qualifiedName) =>
         TryGetAttributeByQualifiedName(qualifiedName, out var value) ? value : null;
 
     /// <summary>
     /// Returns <c>true</c> if an attribute with the given qualified name exists (case-insensitive).
     /// </summary>
+    // Broiler-AI:           Origin=AI; IP=None; Security=Medium; Resources=3; Fingerprint=TBF
+    // Broiler-Human:        PENDING
     public bool HasAttributeByQualifiedName(string qualifiedName) =>
         TryGetAttributeByQualifiedName(qualifiedName, out _);
 
@@ -155,6 +205,9 @@ public class DomElement : DomNode
     /// already exists (case-insensitive), its value is updated in place preserving its namespace;
     /// otherwise a no-namespace attribute is created.
     /// </summary>
+    // Broiler-AI:           Origin=AI; IP=Low; Security=Medium; Resources=4; Fingerprint=TBF
+    // Broiler-Falsified-If: updating an existing namespaced attribute by its qualified name adds a second no-namespace attribute instead of changing it
+    // Broiler-Human:        PENDING
     public void SetAttributeByQualifiedName(string qualifiedName, string value)
     {
         ArgumentNullException.ThrowIfNull(qualifiedName);
@@ -179,6 +232,9 @@ public class DomElement : DomNode
     /// <summary>
     /// Removes the attribute matching the given qualified name (case-insensitive).
     /// </summary>
+    // Broiler-AI:           Origin=AI; IP=Low; Security=Medium; Resources=4; Fingerprint=TBF
+    // Broiler-Falsified-If: removing by a qualified name that matches a namespaced attribute returns true while the attribute stays
+    // Broiler-Human:        PENDING
     public bool RemoveAttributeByQualifiedName(string qualifiedName)
     {
         ArgumentNullException.ThrowIfNull(qualifiedName);
@@ -200,6 +256,9 @@ public class DomElement : DomNode
     /// Looks up an attribute by namespace URI and local name, yielding its qualified name and value.
     /// The namespace URI is normalized (empty string ≡ null).
     /// </summary>
+    // Broiler-AI:           Origin=AI; IP=Low; Security=Medium; Resources=2; Fingerprint=TBF
+    // Broiler-Falsified-If: a lookup with an empty-string namespace misses an attribute stored with no namespace
+    // Broiler-Human:        PENDING
     public bool TryGetAttributeNS(string? namespaceUri, string localName, out string qualifiedName, out string value)
     {
         ArgumentNullException.ThrowIfNull(localName);
@@ -220,6 +279,9 @@ public class DomElement : DomNode
     /// <summary>
     /// Enumerates the qualified names of all attributes present on this element.
     /// </summary>
+    // Broiler-AI:           Origin=AI; IP=Low; Security=Medium; Resources=3; Fingerprint=TBF
+    // Broiler-Falsified-If: a namespaced attribute is enumerated by its local name instead of its prefixed qualified name
+    // Broiler-Human:        PENDING
     public IEnumerable<string> AttributeQualifiedNames
     {
         get
@@ -229,6 +291,9 @@ public class DomElement : DomNode
         }
     }
 
+    // Broiler-AI:           Origin=AI; IP=Low; Security=Medium; Resources=3; Fingerprint=TBF
+    // Broiler-Falsified-If: a shallow clone shares an attribute store with its source, so an attribute write on one shows on the other
+    // Broiler-Human:        PENDING
     internal override DomNode CloneShallow(DomDocument ownerDocument)
     {
         var clone = new DomElement(ownerDocument, Name);
@@ -237,6 +302,9 @@ public class DomElement : DomNode
         return clone;
     }
 
+    // Broiler-AI:           Origin=AI; IP=Low; Security=Medium; Resources=4; Fingerprint=TBF
+    // Broiler-Falsified-If: a no-namespace attribute whose local name is ID in upper case updates the document id index, so GetElementById returns an element whose Id is null
+    // Broiler-Human:        PENDING
     private void SetAttributeCore(DomName name, string value)
     {
         var key = (name.NamespaceUri, name.LocalName);
@@ -264,6 +332,9 @@ public class DomElement : DomNode
             NewValue: value));
     }
 
+    // Broiler-AI:           Origin=AI; IP=Low; Security=Medium; Resources=4; Fingerprint=TBF
+    // Broiler-Falsified-If: removing a no-namespace attribute named ID in upper case drops the element from the id index while its id attribute still holds that value
+    // Broiler-Human:        PENDING
     private bool RemoveAttributeCore(string? namespaceUri, string localName)
     {
         var key = (namespaceUri, localName);
@@ -283,9 +354,15 @@ public class DomElement : DomNode
         return true;
     }
 
+    // Broiler-AI:           Origin=AI; IP=Low; Security=Medium; Resources=0; Fingerprint=TBF
+    // Broiler-Falsified-If: an empty-string namespace is kept as the empty string, so it keys differently from no namespace
+    // Broiler-Human:        PENDING
     private static string? NormalizeNamespace(string? namespaceUri) =>
         string.IsNullOrEmpty(namespaceUri) ? null : namespaceUri;
 
+    // Broiler-AI:           Origin=AI; IP=None; Security=Medium; Resources=1; Fingerprint=TBF
+    // Broiler-Falsified-If: the set admits a local name that differs in case from a listed name, such as an HTML-namespace element named DIV
+    // Broiler-Human:        PENDING
     private static readonly HashSet<string> AllowedShadowHostTags = new(StringComparer.OrdinalIgnoreCase)
     {
         "article", "aside", "blockquote", "body", "div", "footer",
@@ -299,17 +376,25 @@ public class DomElement : DomNode
     /// Returns the open shadow root attached to this element, or null if there is none
     /// or if it was attached in closed mode.
     /// </summary>
+    // Broiler-AI:           Origin=AI; IP=Low; Security=Medium; Resources=0; Fingerprint=TBF
+    // Broiler-Falsified-If: an element whose shadow root was attached in closed mode returns that root from ShadowRoot
+    // Broiler-Human:        PENDING
     public DomShadowRoot? ShadowRoot => _shadowRoot?.Mode == DomShadowRootMode.Open ? _shadowRoot : null;
 
     /// <summary>
     /// Returns the shadow root attached to this element regardless of mode.
     /// Intended for engine and bridge internal use.
     /// </summary>
+    // Broiler-AI:           Origin=AI; IP=None; Security=Medium; Resources=0; Fingerprint=TBF
+    // Broiler-Human:        PENDING
     public DomShadowRoot? InternalShadowRoot => _shadowRoot;
 
     /// <summary>
     /// Attaches a shadow root to this element (DOM §4.2.1.3).
     /// </summary>
+    // Broiler-AI:           Origin=AI; IP=Low; Security=Medium; Resources=2; Fingerprint=TBF
+    // Broiler-Falsified-If: an element outside the HTML namespace whose local name is on the host list, such as an SVG element named div, is given a shadow root instead of a DomException named NotSupportedError
+    // Broiler-Human:        PENDING
     public DomShadowRoot AttachShadow(
         DomShadowRootMode mode,
         bool delegatesFocus = false,

@@ -15,8 +15,13 @@ namespace Broiler.Dom.Html;
 /// Promoted from the HtmlBridge glue layer (its <c>CollectTableRows</c> /
 /// <c>CollectFormControls</c> helpers), which now call these canonical queries.
 /// </remarks>
+// Broiler-AI:           Origin=AI; IP=Low; Security=Medium; Resources=6; Fingerprint=TBF
+// Broiler-Falsified-If: a form holding about 10,000 nested elements overflows the stack in the control walk and ends the process
+// Broiler-Human:        PENDING
 public static class HtmlElementQueries
 {
+    // Broiler-AI:           Origin=AI; IP=Low; Security=Medium; Resources=3; Fingerprint=TBF
+    // Broiler-Human:        PENDING
     private static IEnumerable<DomElement> ChildElements(DomNode node) =>
         node.ChildNodes.OfType<DomElement>();
 
@@ -25,6 +30,9 @@ public static class HtmlElementQueries
     /// (1) rows inside <c>&lt;thead&gt;</c>, (2) direct <c>&lt;tr&gt;</c> children and rows
     /// inside <c>&lt;tbody&gt;</c> in tree order, then (3) rows inside <c>&lt;tfoot&gt;</c>.
     /// </summary>
+    // Broiler-AI:           Origin=AI; Spec=WHATWG-HTML s4.9.1; IP=Low; Security=Medium; Resources=3; Fingerprint=TBF
+    // Broiler-Falsified-If: a <tr> inside a <tfoot> that precedes the <tbody> is listed ahead of the tbody's rows
+    // Broiler-Human:        PENDING
     public static List<DomElement> CollectTableRows(DomElement table)
     {
         var rows = new List<DomElement>();
@@ -62,6 +70,9 @@ public static class HtmlElementQueries
     /// Collects the form control elements (<c>input</c>, <c>select</c>, <c>textarea</c>,
     /// <c>button</c>) in a form's subtree, in document order.
     /// </summary>
+    // Broiler-AI:           Origin=AI; IP=Low; Security=Medium; Resources=6; Fingerprint=TBF
+    // Broiler-Falsified-If: an input inside a nested div is listed after a select that follows that div in document order
+    // Broiler-Human:        PENDING
     public static List<DomElement> CollectFormControls(DomElement form)
     {
         var controls = new List<DomElement>();
@@ -69,6 +80,9 @@ public static class HtmlElementQueries
         return controls;
     }
 
+    // Broiler-AI:           Origin=AI; IP=Low; Security=Medium; Resources=6; Fingerprint=TBF
+    // Broiler-Falsified-If: a form holding about 10,000 nested elements overflows the stack and ends the process
+    // Broiler-Human:        PENDING
     private static void CollectFormControlsRecursive(DomElement parent, List<DomElement> controls)
     {
         foreach (var child in ChildElements(parent))
@@ -86,6 +100,9 @@ public static class HtmlElementQueries
     /// <c>min</c> defaults to 0 and <c>max</c> to 1; a <c>max</c> at or below <c>min</c> is
     /// treated as <c>min + 1</c>, and the result is clamped to the range.
     /// </summary>
+    // Broiler-AI:           Origin=AI; IP=Low; Security=Medium; Resources=3; Fingerprint=TBF
+    // Broiler-Falsified-If: a value, min or max spelled NaN or Infinity yields NaN instead of a ratio clamped to 0..1
+    // Broiler-Human:        PENDING
     public static double ResolveProgressLikeValueRatio(DomElement element, string tag)
     {
         var min = tag == "meter" ? ReadNumericAttribute(element, "min", 0) : 0;
@@ -101,6 +118,9 @@ public static class HtmlElementQueries
     /// Reads a numeric content attribute, returning <paramref name="fallback"/> when the
     /// attribute is absent, blank, or not a valid number.
     /// </summary>
+    // Broiler-AI:           Origin=AI; IP=Low; Security=Medium; Resources=3; Fingerprint=TBF
+    // Broiler-Falsified-If: an attribute value that is not a valid floating-point number, such as NaN or Infinity, is returned as a number instead of the fallback
+    // Broiler-Human:        PENDING
     public static double ReadNumericAttribute(DomElement element, string attributeName, double fallback)
     {
         if (element.TryGetAttributeByQualifiedName(attributeName, out var raw))

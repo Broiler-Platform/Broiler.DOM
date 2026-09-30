@@ -1,5 +1,7 @@
 namespace Broiler.Dom;
 
+// Broiler-AI:           Origin=AI; IP=None; Security=Medium; Resources=1; Fingerprint=TBF
+// Broiler-Human:        PENDING
 public sealed class DomDocumentType(DomDocument ownerDocument, string name, string publicId, string systemId) :
     DomNode(DomNodeType.DocumentType, ownerDocument)
 {
@@ -9,6 +11,8 @@ public sealed class DomDocumentType(DomDocument ownerDocument, string name, stri
 
     public string SystemId { get; } = systemId;
 
+    // Broiler-AI:           Origin=AI; IP=None; Security=Medium; Resources=1; Fingerprint=TBF
+    // Broiler-Human:        PENDING
     internal override DomNode CloneShallow(DomDocument ownerDocument) =>
         new DomDocumentType(ownerDocument, Name, PublicId, SystemId);
 }

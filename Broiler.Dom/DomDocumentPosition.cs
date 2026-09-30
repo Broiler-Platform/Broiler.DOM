@@ -7,6 +7,9 @@ namespace Broiler.Dom;
 /// Standard's <c>Node.DOCUMENT_POSITION_*</c> constants, so a script binding passes the number
 /// through unchanged.
 /// </summary>
+// Broiler-AI:           Origin=AI; IP=None; Security=Low; Resources=0; Fingerprint=TBF
+// Broiler-Falsified-If: a member's value differs from the matching DOM Node.DOCUMENT_POSITION constant, such as Following not being 0x04
+// Broiler-Human:        PENDING
 [Flags]
 public enum DomDocumentPosition : ushort
 {

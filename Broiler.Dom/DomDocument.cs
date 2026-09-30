@@ -4,36 +4,68 @@ using System.Linq;
 
 namespace Broiler.Dom;
 
+// Broiler-AI:           Origin=AI; IP=Low; Security=Medium; Resources=6; Fingerprint=TBF
+// Broiler-Falsified-If: a script-built subtree nested about 20,000 elements deep ends the process with a stack overflow when imported deeply or connected to the document
+// Broiler-Human:        PENDING
 public sealed class DomDocument : DomNode
 {
     private readonly Dictionary<string, HashSet<DomElement>> _elementsById = new(StringComparer.Ordinal);
 
+    // Broiler-AI:           Origin=AI; IP=None; Security=Medium; Resources=1; Fingerprint=TBF
+    // Broiler-Human:        PENDING
     public DomDocument() : base(DomNodeType.Document, null)
     {
     }
 
+    // Broiler-AI:           Origin=AI; IP=None; Security=Medium; Resources=0; Fingerprint=TBF
+    // Broiler-Human:        PENDING
     public override DomDocument OwnerDocument => this;
 
     public ulong Version { get; private set; }
 
+    // Broiler-AI:           Origin=AI; IP=Low; Security=Medium; Resources=3; Fingerprint=TBF
+    // Broiler-Falsified-If: a document whose doctype follows a comment child returns null from DocumentType
+    // Broiler-Human:        PENDING
     public DomDocumentType? DocumentType => ChildNodes.OfType<DomDocumentType>().FirstOrDefault();
 
+    // Broiler-AI:           Origin=AI; IP=None; Security=Medium; Resources=3; Fingerprint=TBF
+    // Broiler-Human:        PENDING
     public event Action<DomMutationRecord>? Mutated;
 
+    // Broiler-AI:           Origin=AI; IP=None; Security=Medium; Resources=1; Fingerprint=TBF
+    // Broiler-Human:        PENDING
     public DomDocumentType CreateDocumentType(string name, string publicId = "", string systemId = "") => new(this, name, publicId, systemId);
 
+    // Broiler-AI:           Origin=AI; IP=None; Security=Medium; Resources=1; Fingerprint=TBF
+    // Broiler-Human:        PENDING
     public DomText CreateTextNode(string data) => new(this, data);
 
+    // Broiler-AI:           Origin=AI; IP=None; Security=Medium; Resources=1; Fingerprint=TBF
+    // Broiler-Human:        PENDING
     public DomComment CreateComment(string data) => new(this, data);
 
+    // Broiler-AI:           Origin=AI; IP=None; Security=Medium; Resources=1; Fingerprint=TBF
+    // Broiler-Human:        PENDING
     public DomDocumentFragment CreateDocumentFragment() => new(this);
 
+    // Broiler-AI:           Origin=AI; IP=Low; Security=Medium; Resources=3; Fingerprint=TBF
+    // Broiler-Falsified-If: a document whose first child is a doctype or comment returns null although an element child follows
+    // Broiler-Human:        PENDING
     public DomElement? DocumentElement => ChildNodes.OfType<DomElement>().FirstOrDefault();
 
+    // Broiler-AI:           Origin=AI; IP=Low; Security=Medium; Resources=3; Fingerprint=TBF
+    // Broiler-Falsified-If: Head returns an element outside the HTML namespace, such as an SVG element named head placed before the HTML head
+    // Broiler-Human:        PENDING
     public DomElement? Head => DocumentElement?.ChildNodes.OfType<DomElement>().FirstOrDefault(static element => string.Equals(element.LocalName, "head", StringComparison.OrdinalIgnoreCase));
 
+    // Broiler-AI:           Origin=AI; IP=Low; Security=Medium; Resources=3; Fingerprint=TBF
+    // Broiler-Falsified-If: a document element whose first body-or-frameset child is a frameset makes Body return null instead of that frameset
+    // Broiler-Human:        PENDING
     public DomElement? Body => DocumentElement?.ChildNodes.OfType<DomElement>().FirstOrDefault(static element => string.Equals(element.LocalName, "body", StringComparison.OrdinalIgnoreCase));
 
+    // Broiler-AI:           Origin=AI; IP=Low; Security=Medium; Resources=6; Fingerprint=TBF
+    // Broiler-Falsified-If: adopting a shadow root moves it to another document while its host stays in the old one, where the DOM throws HierarchyRequestError
+    // Broiler-Human:        PENDING
     public DomNode AdoptNode(DomNode node)
     {
         ArgumentNullException.ThrowIfNull(node);
@@ -55,6 +87,9 @@ public sealed class DomDocument : DomNode
         return node;
     }
 
+    // Broiler-AI:           Origin=AI; IP=Low; Security=Medium; Resources=6; Fingerprint=TBF
+    // Broiler-Falsified-If: a deep import of a detached chain about 20,000 elements deep ends the process with a stack overflow in the recursive ImportNode calls
+    // Broiler-Human:        PENDING
     public DomNode ImportNode(DomNode node, bool deep = false)
     {
         ArgumentNullException.ThrowIfNull(node);
@@ -82,21 +117,33 @@ public sealed class DomDocument : DomNode
     /// otherwise throw here and take down the whole page. Prefix splitting and
     /// namespace validation belong to <see cref="CreateElementNS"/>.
     /// </summary>
+    // Broiler-AI:           Origin=AI; IP=Low; Security=Medium; Resources=2; Fingerprint=TBF
+    // Broiler-Falsified-If: a name containing U+212A KELVIN SIGN is folded to ASCII k, so LIN followed by that sign yields an element whose local name is link
+    // Broiler-Human:        PENDING
     public DomElement CreateElement(string localName) =>
         new(this, DomName.CreateLocal(DomNamespaces.Html, localName.ToLowerInvariant()));
 
+    // Broiler-AI:           Origin=AI; IP=None; Security=Medium; Resources=2; Fingerprint=TBF
+    // Broiler-Falsified-If: a prefixed qualified name with no namespace yields an element instead of a DomException named NamespaceError
+    // Broiler-Human:        PENDING
     public DomElement CreateElementNS(string? namespaceUri, string qualifiedName) =>
         new(this, new DomName(namespaceUri, qualifiedName));
 
     internal override DomNode CloneShallow(DomDocument ownerDocument) =>
         throw new InvalidOperationException("Document cloning is not supported by the Phase 1 kernel.");
 
+    // Broiler-AI:           Origin=AI; IP=Low; Security=Medium; Resources=4; Fingerprint=TBF
+    // Broiler-Falsified-If: a subscriber observes a record while Version still holds its value from before the mutation
+    // Broiler-Human:        PENDING
     internal void PublishMutation(DomMutationRecord mutation)
     {
         Version++;
         Mutated?.Invoke(mutation);
     }
 
+    // Broiler-AI:           Origin=AI; IP=Low; Security=Medium; Resources=2; Fingerprint=TBF
+    // Broiler-Falsified-If: after a connected element's id changes, GetElementById still returns it for the old id
+    // Broiler-Human:        PENDING
     internal void UpdateElementId(DomElement element, string? oldId, string? newId)
     {
         if (!element.IsConnected)
@@ -121,12 +168,18 @@ public sealed class DomDocument : DomNode
         }
     }
 
+    // Broiler-AI:           Origin=AI; IP=Low; Security=Medium; Resources=6; Fingerprint=TBF
+    // Broiler-Falsified-If: connecting a detached chain of 50,000 nested elements ends the process with a stack overflow in the nested InclusiveDescendants iterators
+    // Broiler-Human:        PENDING
     internal void IndexConnectedSubtree(DomNode node)
     {
         foreach (var element in node.InclusiveDescendants().OfType<DomElement>())
             UpdateElementId(element, null, element.Id);
     }
 
+    // Broiler-AI:           Origin=AI; IP=Low; Security=Medium; Resources=6; Fingerprint=TBF
+    // Broiler-Falsified-If: an element in the shadow tree of a removed host keeps its id entry, so once its id changes and it moves into the document GetElementById returns it for the old id
+    // Broiler-Human:        PENDING
     internal void UnindexConnectedSubtree(DomNode node)
     {
         foreach (var element in node.InclusiveDescendants().OfType<DomElement>())
@@ -145,6 +198,9 @@ public sealed class DomDocument : DomNode
     /// ambiguous path takes would already have answered correctly. The two used to disagree: with
     /// one element carrying an id the encapsulated one came back, with two it did not.
     /// </remarks>
+    // Broiler-AI:           Origin=AI; IP=Low; Security=Medium; Resources=6; Fingerprint=TBF
+    // Broiler-Falsified-If: with a single indexed candidate inside a shadow tree, GetElementById returns that element instead of null
+    // Broiler-Human:        PENDING
     public DomElement? GetElementById(string id)
     {
         if (!_elementsById.TryGetValue(id, out var candidates) || candidates.Count == 0)
@@ -165,6 +221,9 @@ public sealed class DomDocument : DomNode
     /// <c>getElementsByTagName</c>). The special value <c>"*"</c> matches every
     /// element; matching is otherwise ASCII case-insensitive.
     /// </summary>
+    // Broiler-AI:           Origin=AI; IP=Low; Security=Medium; Resources=6; Fingerprint=TBF
+    // Broiler-Falsified-If: a lowercase query matches an SVG element whose qualified name differs in case, such as foreignObject
+    // Broiler-Human:        PENDING
     public IReadOnlyList<DomElement> GetElementsByTagName(string qualifiedName)
     {
         ArgumentNullException.ThrowIfNull(qualifiedName);
