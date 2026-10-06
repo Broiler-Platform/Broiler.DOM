@@ -339,6 +339,20 @@ fix once the package is bumped.
 rule; `HtmlTreeBuilding.cs` is deleted; CSP discovery uses the canonical scanner while
 policy stays in the bridge.
 
+**Document mode.** `HtmlDocumentQueries.IsQuirksMode(string html)` and
+`IsQuirksDoctype(name, publicId, systemId)` take over the quirks-mode classification that
+Broiler.Layout's `DocumentModeContext.IsQuirksHtml` and `IsQuirksDoctype` did with a
+hand-written mirror of this tokenizer. `IsQuirksMode` reads the same tokens through the
+tree builder's initial-insertion-mode predicate, so it is quirks mode exactly when the
+parsed tree's DocumentType is missing or one `IsQuirksDoctype` calls quirks.
+`HasHtmlDoctype` is not a substitute: a legacy DOCTYPE named `html` can still select
+quirks mode. Open:
+
+- Broiler.HTML, HtmlBridge and the Browser CLI call these instead of Layout's, and Layout
+  drops its copies.
+- Limited-quirks mode is not reported. A three-state document mode is a separate API
+  change.
+
 ## D7 — form control state companion
 
 **Owner:** `Broiler.Dom.Html`, blocked on characterization.

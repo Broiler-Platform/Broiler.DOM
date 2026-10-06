@@ -1101,7 +1101,7 @@ public sealed class HtmlDocumentParser
     // Broiler-AI:           Origin=AI; Spec=WHATWG-HTML s13.2.6.4.1; IP=Low; Security=High; Resources=3; Fingerprint=TBF
     // Broiler-Falsified-If: a character token holding U+00A0 or U+FEFF keeps the initial insertion mode, so a later DOCTYPE still becomes the DocumentType
     // Broiler-Human:        PENDING
-    private static bool StaysInInitialInsertionMode(HtmlToken token) => token.Type switch
+    internal static bool StaysInInitialInsertionMode(HtmlToken token) => token.Type switch
     {
         TokenType.Comment => true,
         TokenType.Character => !token.Data.AsSpan().ContainsAnyExcept(AsciiWhitespace),
