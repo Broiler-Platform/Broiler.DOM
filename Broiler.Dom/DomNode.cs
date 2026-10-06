@@ -221,6 +221,12 @@ public abstract partial class DomNode
 
         node.ParentNode?.RemoveChild(node);
 
+        // Taking the node from its old parent can run script (DomDocument.Removing), and script can
+        // take the reference node away; inserting before a node that is no longer here would put the
+        // new one nowhere the caller asked for.
+        if (referenceNode is not null && !ReferenceEquals(referenceNode.ParentNode, this))
+            throw DomException.NotFound("The reference node is not a child of this node.");
+
         var index = referenceNode is null ? _children.Count : _children.IndexOf(referenceNode);
         var previousSibling = index > 0 ? _children[index - 1] : null;
         _children.Insert(index, node);
@@ -345,6 +351,10 @@ public abstract partial class DomNode
             throw DomException.HierarchyRequest("Text nodes cannot be direct children of a document.");
     }
 
+    // Chromium's words for a removal whose node a DomDocument.Removing handler moved first.
+    internal const string MovedWhileRemovingMessage =
+        "The node to be removed is no longer a child of this node. Perhaps it was moved in a 'blur' event handler?";
+
     public DomNode RemoveChild(DomNode child)
     {
         ArgumentNullException.ThrowIfNull(child);
@@ -353,9 +363,23 @@ public abstract partial class DomNode
         if (index < 0)
             throw DomException.NotFound("The node to remove is not a child of this node.");
 
+        var document = this is DomDocument owner ? owner : OwnerDocument;
+
+        // What has to happen before a node leaves the document -- a browser blurs the focused element
+        // there -- happens while it is still connected and still here. Its handlers can run script,
+        // and script can move the node; Chromium then refuses the removal rather than taking the node
+        // from wherever it went.
+        if (document.HasRemovingHandlers && child.IsConnected)
+        {
+            document.RaiseRemoving(new DomRemoval(child, ChildrenOnly: false));
+            if (!ReferenceEquals(child.ParentNode, this))
+                throw DomException.NotFound(MovedWhileRemovingMessage);
+
+            index = _children.IndexOf(child);
+        }
+
         var previousSibling = index > 0 ? _children[index - 1] : null;
         var nextSibling = index + 1 < _children.Count ? _children[index + 1] : null;
-        var document = this is DomDocument owner ? owner : OwnerDocument;
 
         if (child.IsConnected)
             document.UnindexConnectedSubtree(child);
@@ -564,6 +588,12 @@ public abstract partial class DomNode
             return;
 
         var document = this is DomDocument doc ? doc : OwnerDocument;
+
+        // Announced once for all of them, before any goes (see RemoveChild); what goes is whatever
+        // children there are once the handlers have run.
+        if (_children.Count > 0 && document.HasRemovingHandlers && IsConnected)
+            document.RaiseRemoving(new DomRemoval(this, ChildrenOnly: true));
+
         var removed = _children.ToArray();
         foreach (var child in removed)
         {

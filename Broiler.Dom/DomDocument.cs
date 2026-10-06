@@ -32,6 +32,34 @@ public sealed class DomDocument : DomNode
     // Broiler-Human:        PENDING
     public event Action<DomMutationRecord>? Mutated;
 
+    /// <summary>
+    /// Raised before nodes leave this document's tree, while they are still connected and still
+    /// where they were: the moment a host runs what has to happen first. A browser takes focus from
+    /// a focused element that is going there, and fires its <c>blur</c> and <c>focusout</c>.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// A handler can run script, and script can change the tree. A removal checks again afterwards:
+    /// <see cref="DomNode.RemoveChild"/> throws a <c>NotFoundError</c>, as Chromium does, when the node
+    /// is no longer a child of the node removing it, and an insertion that was moving a node throws
+    /// when its reference node has gone. A replace-all removes whatever children there are once the
+    /// handlers have run.
+    /// </para>
+    /// <para>
+    /// Raised only for connected nodes: what a host has to do before a removal concerns nodes in a
+    /// document, a focused element always is one, and a detached tree has nothing to announce.
+    /// <c>moveBefore</c> raises nothing, because it never disconnects what it moves.
+    /// </para>
+    /// </remarks>
+    // Broiler-AI:           Origin=AI; Spec=WHATWG-DOM s4.2.3; IP=Low; Security=Medium; Resources=3; Fingerprint=TBF
+    // Broiler-Falsified-If: a handler sees the node already detached or its parent changed, or a removal from a detached tree raises it
+    // Broiler-Human:        PENDING
+    public event Action<DomRemoval>? Removing;
+
+    internal bool HasRemovingHandlers => Removing is not null;
+
+    internal void RaiseRemoving(DomRemoval removal) => Removing?.Invoke(removal);
+
     // Broiler-AI:           Origin=AI; IP=None; Security=Medium; Resources=1; Fingerprint=TBF
     // Broiler-Human:        PENDING
     public DomDocumentType CreateDocumentType(string name, string publicId = "", string systemId = "") => new(this, name, publicId, systemId);
