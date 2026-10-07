@@ -21,6 +21,11 @@ jobs:
   version:
     name: Resolve preview version
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      # Read-only: the retired GitHub Packages feed still holds earlier previews, and the
+      # resolver counts them so a preview number is never reused. Nothing is pushed there.
+      packages: read
     outputs:
       version: ${{ steps.version.outputs.version }}
     steps:
