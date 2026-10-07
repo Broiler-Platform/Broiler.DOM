@@ -53,7 +53,7 @@ public sealed class DomTreeWalker
     public DomWhatToShow WhatToShow { get; }
 
     // Broiler-AI:           Origin=AI; Spec=WHATWG-DOM s6.2; IP=Low; Security=Medium; Resources=3; Fingerprint=TBF
-    // Broiler-Falsified-If: assigning a node that is neither the root nor its descendant throws NotFound, although the DOM Standard's currentNode setter accepts any node
+    // Broiler-Falsified-If: assigning a node that is neither the root nor its descendant throws, although the DOM Standard's currentNode setter accepts any node and a walk continues from it
     // Broiler-Human:        PENDING
     public DomNode CurrentNode
     {
@@ -61,8 +61,6 @@ public sealed class DomTreeWalker
         set
         {
             ArgumentNullException.ThrowIfNull(value);
-            if (!ReferenceEquals(value, Root) && !value.IsDescendantOf(Root))
-                throw DomException.NotFound("The current node must be within the TreeWalker root.");
             field = value;
         }
     }
@@ -72,15 +70,12 @@ public sealed class DomTreeWalker
     // Broiler-Human:        PENDING
     public DomNode? ParentNode()
     {
-        if (ReferenceEquals(CurrentNode, Root))
-            return null;
-
-        for (var node = CurrentNode.ParentNode; node is not null; node = node.ParentNode)
+        var node = CurrentNode;
+        while (node is not null && !ReferenceEquals(node, Root))
         {
-            if (Evaluate(node) == DomFilterResult.Accept)
+            node = node.ParentNode;
+            if (node is not null && Evaluate(node) == DomFilterResult.Accept)
                 return CurrentNode = node;
-            if (ReferenceEquals(node, Root))
-                break;
         }
         return null;
     }
@@ -133,7 +128,22 @@ public sealed class DomTreeWalker
                     continue;
                 }
             }
-            node = forward ? node.NextSibling : node.PreviousSibling;
+
+            // No acceptable node below this one: move to its next sibling, climbing out of every
+            // skipped subtree that has none, and stop on reaching the node the walk started from.
+            while (true)
+            {
+                var sibling = forward ? node.NextSibling : node.PreviousSibling;
+                if (sibling is not null)
+                {
+                    node = sibling;
+                    break;
+                }
+                var parent = node.ParentNode;
+                if (parent is null || ReferenceEquals(parent, Root) || ReferenceEquals(parent, CurrentNode))
+                    return null;
+                node = parent;
+            }
         }
         return null;
     }
@@ -149,36 +159,33 @@ public sealed class DomTreeWalker
     public DomNode? NextSibling() => TraverseSiblings(forward: true);
 
     // Broiler-AI:           Origin=AI; Spec=WHATWG-DOM s6.2; IP=Low; Security=Medium; Resources=6; Fingerprint=TBF
-    // Broiler-Falsified-If: when a skipped sibling's descendants are all skipped or rejected, the siblings after it are never visited and null is returned, because the inner loop never climbs back out of the skipped subtree
+    // Broiler-Falsified-If: the filter is asked about the root when the walk climbs to it, although the DOM Standard returns null there without filtering it
     // Broiler-Human:        PENDING
     private DomNode? TraverseSiblings(bool forward)
     {
         var node = CurrentNode;
-        while (!ReferenceEquals(node, Root))
+        if (ReferenceEquals(node, Root))
+            return null;
+        while (true)
         {
             var sibling = forward ? node.NextSibling : node.PreviousSibling;
             while (sibling is not null)
             {
-                var result = Evaluate(sibling);
+                node = sibling;
+                var result = Evaluate(node);
                 if (result == DomFilterResult.Accept)
-                    return CurrentNode = sibling;
-                if (result == DomFilterResult.Skip)
-                {
-                    var child = forward ? sibling.FirstChild : sibling.LastChild;
-                    if (child is not null)
-                    {
-                        sibling = child;
-                        continue;
-                    }
-                }
-                sibling = forward ? sibling.NextSibling : sibling.PreviousSibling;
+                    return CurrentNode = node;
+                sibling = forward ? node.FirstChild : node.LastChild;
+                if (result == DomFilterResult.Reject || sibling is null)
+                    sibling = forward ? node.NextSibling : node.PreviousSibling;
             }
 
-            node = node.ParentNode!;
+            if (node.ParentNode is not { } parent || ReferenceEquals(parent, Root))
+                return null;
+            node = parent;
             if (Evaluate(node) == DomFilterResult.Accept)
                 return null;
         }
-        return null;
     }
 
     // Broiler-AI:           Origin=AI; IP=Low; Security=Medium; Resources=6; Fingerprint=TBF
@@ -187,59 +194,67 @@ public sealed class DomTreeWalker
     public DomNode? PreviousSibling() => TraverseSiblings(forward: false);
 
     // Broiler-AI:           Origin=AI; Spec=WHATWG-DOM s6.2; IP=Low; Security=Medium; Resources=6; Fingerprint=TBF
-    // Broiler-Falsified-If: when the filter rejects the current node (including the root of a fresh walker), nextNode() skips that node's descendants and can return null, where the DOM Standard starts from an accept result and descends into them
+    // Broiler-Falsified-If: the filter is asked about the current node before the walk leaves it, or about any node twice in one call, although the DOM Standard starts from an accept result and filters each node it reaches once
     // Broiler-Human:        PENDING
     public DomNode? NextNode()
     {
         var node = CurrentNode;
+        var result = DomFilterResult.Accept;
         while (true)
         {
-            if (Evaluate(node) != DomFilterResult.Reject && node.FirstChild is not null)
+            while (result != DomFilterResult.Reject && node.FirstChild is { } child)
             {
-                node = node.FirstChild;
-            }
-            else
-            {
-                while (node.NextSibling is null)
-                {
-                    if (node.ParentNode is null || ReferenceEquals(node, Root))
-                        return null;
-                    node = node.ParentNode;
-                }
-                if (ReferenceEquals(node, Root))
-                    return null;
-                node = node.NextSibling;
+                node = child;
+                result = Evaluate(node);
+                if (result == DomFilterResult.Accept)
+                    return CurrentNode = node;
             }
 
-            var result = Evaluate(node);
+            DomNode? sibling = null;
+            for (DomNode? temporary = node; temporary is not null; temporary = temporary.ParentNode)
+            {
+                if (ReferenceEquals(temporary, Root))
+                    return null;
+                sibling = temporary.NextSibling;
+                if (sibling is not null)
+                    break;
+            }
+            if (sibling is null)
+                return null;
+
+            node = sibling;
+            result = Evaluate(node);
             if (result == DomFilterResult.Accept)
                 return CurrentNode = node;
         }
     }
 
     // Broiler-AI:           Origin=AI; Spec=WHATWG-DOM s6.2; IP=Low; Security=Medium; Resources=6; Fingerprint=TBF
-    // Broiler-Falsified-If: starting from a current node inside the root, the walk returns a node that lies outside the root instead of stopping at the root
+    // Broiler-Falsified-If: the filter is asked about a node twice in one call, or, starting from a current node inside the root, the walk returns a node that lies outside the root instead of stopping at the root
     // Broiler-Human:        PENDING
     public DomNode? PreviousNode()
     {
         var node = CurrentNode;
         while (!ReferenceEquals(node, Root))
         {
-            if (node.PreviousSibling is not null)
+            var sibling = node.PreviousSibling;
+            while (sibling is not null)
             {
-                node = node.PreviousSibling;
-                while (Evaluate(node) != DomFilterResult.Reject && node.LastChild is not null)
-                    node = node.LastChild;
-            }
-            else if (node.ParentNode is not null)
-            {
-                node = node.ParentNode;
-            }
-            else
-            {
-                return null;
+                node = sibling;
+                var result = Evaluate(node);
+                while (result != DomFilterResult.Reject && node.LastChild is { } last)
+                {
+                    node = last;
+                    result = Evaluate(node);
+                }
+                if (result == DomFilterResult.Accept)
+                    return CurrentNode = node;
+                sibling = node.PreviousSibling;
             }
 
+            if (ReferenceEquals(node, Root) || node.ParentNode is not { } parent)
+                return null;
+            node = parent;
             if (Evaluate(node) == DomFilterResult.Accept)
                 return CurrentNode = node;
         }
