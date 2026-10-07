@@ -18,8 +18,8 @@ the same platform-neutral code deliberately: a tokenizer is where two hosts
 disagree about newlines, string comparison and culture, and the character-reference
 decoding this component hands to the platform is a different platform on each.
 
-Publish supports GitHub Packages and NuGet.org, automatic preview versions, and
-dry runs. See [CI, packages, and releases](https://github.com/Broiler-Platform/Broiler.DOM/blob/main/docs/packaging.md) for configuration,
+Publish pushes to NuGet.org only, with automatic preview versions; CI packs every
+package and verifies a consumer restore on every run without pushing. See [CI, packages, and releases](https://github.com/Broiler-Platform/Broiler.DOM/blob/main/docs/packaging.md) for configuration,
 credentials, and local packaging commands.
 
 ## Standards and rights

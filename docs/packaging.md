@@ -37,44 +37,32 @@ This repository restores from NuGet.org only. Its runtime libraries have no exte
 `NuGet.config` explicitly clears inherited sources, disabled-source settings, and
 source mappings so machine settings cannot silently change the feed selection.
 
-For GitHub Packages, set the process environment variable (never commit a token):
-
-```text
-NuGetPackageSourceCredentials_github=Username=<github-user>;Password=<PAT>;ValidAuthenticationTypes=Basic
-```
-
-The source name is exactly `github`. A local PAT needs `read:packages`. Workflows
-supply `GITHUB_TOKEN`; every upstream package must grant this repository access
-under **Manage Actions access**. `packages: read` alone does not grant access to
-another repository's private packages. See [GitHub's registry documentation](https://docs.github.com/en/packages/working-with-a-github-packages-registry/working-with-the-nuget-registry).
-
 Native must be available before Media; Media before Input; and those dependencies
-before Graphics. DOM is independent. Selecting NuGet.org as the publish destination
-does not copy upstream packages there.
+before Graphics. DOM is independent.
 
 ## CI and Publish
 
-CI builds and tests `Release` on Ubuntu and Windows. Windows packs and attaches the
-complete package set as `nuget-packages`. Publish calls this same CI workflow with
+CI builds and tests `Release` on Ubuntu and Windows. Windows packs the complete
+package set, verifies a fresh consumer restore from NuGet.org, and attaches the
+packages as `nuget-packages`; this is the no-push pack dry run. Publish calls this same CI workflow with
 the resolved version and downloads its validated artifacts; it does not rebuild them.
 
-Run **Publish** manually with `target=github` or `target=nuget`. `dry-run=true` is
-the default: it selects a version, runs CI, packs, and verifies a fresh consumer
-restore without pushing anything. The restore uses an isolated cache, the local
-release artifacts, and only the destination feed (plus NuGet.org for public
-third-party dependencies). It catches missing transitive dependencies before upload.
-You can also run it locally:
+Run **Publish** manually or by pushing a tag. It always publishes to NuGet.org:
+it selects a version, runs CI, verifies a fresh consumer restore, and pushes. There
+is no dry-run mode and no GitHub Packages target. The restore uses an isolated cache,
+the local release artifacts, and NuGet.org. It catches missing transitive dependencies
+before upload. You can also run it locally:
 
 ```sh
-pwsh -File eng/verify-feed.ps1 -Target github -Packages artifacts
+pwsh -File eng/verify-feed.ps1 -Packages artifacts
 ```
 
 Leave `version-suffix` empty to select the next unused `preview.N`. The resolver
-checks every shipping package on **both** NuGet.org and GitHub Packages, whichever
-feed is the target, so the two feeds share one cumulative sequence: with `preview.3`
-on GitHub Packages and `preview.2` on NuGet.org, the next publish to either feed is
+checks every shipping package on NuGet.org and on the retired GitHub Packages feed
+(read-only; nothing is pushed there), so the sequence stays cumulative: with
+`preview.3` on GitHub Packages and `preview.2` on NuGet.org, the next publish is
 `preview.4`. A version number therefore never names two different builds. The lookup
-needs `GITHUB_TOKEN` with `packages: read`, which the workflow grants.
+needs `GITHUB_TOKEN` with `packages: read`, which the version job grants.
 The configured preview is the minimum; a partially published preview is skipped.
 An explicit suffix must be unused and at least the computed next preview. Feed
 errors stop the run. Publish runs are serialized within each repository.
@@ -82,8 +70,7 @@ errors stop the run. Publish runs are serialized within each repository.
 A tag `v0.1.0-preview.N` publishes that exact version to NuGet.org after the same
 checks, so it too must be above every preview on either feed. Only `X.Y.Z-preview.N` versions on the configured release line are accepted;
 stable and other prerelease formats are rejected. After a partial upload, use a
-new preview rather than reusing the old tag. Dry runs do not reserve a version.
+new preview rather than reusing the old tag.
 
-NuGet.org publishing requires the repository secret `NUGET_API_KEY`. GitHub
-publishing uses `GITHUB_TOKEN`. Symbol packages are attached to the workflow artifact
-and pushed alongside packages to NuGet.org; GitHub receives `.nupkg` files only.
+NuGet.org publishing requires the repository secret `NUGET_API_KEY`. Symbol packages
+are attached to the workflow artifact and pushed alongside packages to NuGet.org.
