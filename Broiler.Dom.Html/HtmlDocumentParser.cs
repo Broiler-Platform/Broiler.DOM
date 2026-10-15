@@ -36,7 +36,26 @@ public sealed record HtmlParseDiagnostic(string Message, int? SourceOffset = nul
 public sealed record HtmlDocumentParseResult(
     DomDocument Document,
     string Title,
-    IReadOnlyList<HtmlParseDiagnostic> Diagnostics);
+    IReadOnlyList<HtmlParseDiagnostic> Diagnostics)
+{
+    /// <summary>
+    /// Whether the tree builder put the document in quirks mode (HTML §13.2.6.4.1): the token that
+    /// ended the initial insertion mode was not a DOCTYPE, or was one that
+    /// <see cref="HtmlDocumentQueries.IsQuirksDoctype"/> classifies as quirks. A source with no such
+    /// token is in quirks mode too. This is the answer
+    /// <see cref="HtmlDocumentQueries.IsQuirksMode(string?)"/> gives for the same source, read from
+    /// the parse instead of a second tokenization of it.
+    /// </summary>
+    /// <remarks>
+    /// Init-only rather than a constructor parameter, so the three-parameter constructor and
+    /// <c>Deconstruct</c> that callers compile against are unchanged. A result built through that
+    /// constructor reports <see langword="false"/>.
+    /// </remarks>
+    // Broiler-AI:           Origin=AI; Spec=WHATWG-HTML s13.2.6.4.1; IP=None; Security=Medium; Resources=0; Fingerprint=TBF
+    // Broiler-Falsified-If: for some source, this differs from HtmlDocumentQueries.IsQuirksMode(source), such as a comment before <!DOCTYPE html> reading as quirks
+    // Broiler-Human:        PENDING
+    public bool IsQuirksMode { get; init; }
+}
 
 // Broiler-AI:           Origin=AI; IP=None; Security=Low; Resources=0; Fingerprint=TBF
 // Broiler-Human:        PENDING
@@ -545,6 +564,11 @@ public sealed class HtmlDocumentParser
         // consumer of the tree.
         var initialInsertionMode = true;
 
+        // Decided where the initial insertion mode ends, as HTML §13.2.6.4.1 decides it: by the
+        // DOCTYPE token that ends it, or by its absence. A source that never leaves the mode is in
+        // quirks mode, which is why this starts true.
+        var quirksMode = true;
+
         // A fragment in an SVG or MathML context starts with that context open, where the string
         // wrapper's markup would have opened an HTML element of its name. Nothing is tokenized ahead
         // of the caller's markup, so the tokenizer starts in the data state, which is the state
@@ -575,6 +599,8 @@ public sealed class HtmlDocumentParser
             if (initialInsertionMode && !StaysInInitialInsertionMode(token))
             {
                 initialInsertionMode = false;
+                quirksMode = token.Type != TokenType.Doctype
+                    || HtmlDocumentQueries.IsQuirksDoctype(token.Name, token.PublicId, token.SystemId);
                 if (token.Type != TokenType.Doctype)
                 {
                     errors?.Report("missing-doctype",
@@ -864,7 +890,10 @@ public sealed class HtmlDocumentParser
         // Only the first HTML title element counts. The text of every title used to be appended, so
         // two titles in a head gave both, and an icon's SVG title joined the page's.
         var documentTitle = FirstInTreeOrder(titleElements);
-        return new HtmlDocumentParseResult(document, documentTitle?.TextContent.Trim() ?? string.Empty, diagnostics);
+        return new HtmlDocumentParseResult(document, documentTitle?.TextContent.Trim() ?? string.Empty, diagnostics)
+        {
+            IsQuirksMode = quirksMode,
+        };
     }
 
     /// <summary>The element of <paramref name="elements"/> that comes first in tree order.</summary>
