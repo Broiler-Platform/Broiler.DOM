@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Frozen;
 using System.Collections.Generic;
 using System.Linq;
 using Broiler.Dom;
@@ -22,6 +23,42 @@ public static class HtmlFormQueries
     {
         "button", "fieldset", "input", "object", "output", "select", "textarea"
     };
+
+    // The keywords of the input element's type attribute (HTML §4.10.5), each naming one state.
+    // Matched with OrdinalIgnoreCase, which folds ASCII letters only against these all-ASCII
+    // keywords: the KELVIN SIGN in "chec\u212Abox" does not match, where ToLowerInvariant would fold
+    // it to k.
+    // Broiler-AI:           Origin=AI; Spec=WHATWG-HTML s4.10.5; IP=None; Security=Medium; Resources=0; Fingerprint=TBF
+    // Broiler-Falsified-If: a keyword such as datetime-local or image is missing, so an input of that type is reported as text
+    // Broiler-Human:        PENDING
+    private static readonly FrozenSet<string> InputTypeKeywords = new[]
+    {
+        "hidden", "text", "search", "tel", "url", "email", "password", "date", "month", "week", "time",
+        "datetime-local", "number", "range", "color", "checkbox", "radio", "file", "submit", "image",
+        "reset", "button",
+    }.ToFrozenSet(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// The state of <paramref name="input"/>'s <c>type</c> attribute, as its lowercase keyword
+    /// (HTML §4.10.5): the keyword the attribute matches ASCII case-insensitively, or
+    /// <c>"text"</c>, the missing value default and the invalid value default. This is what the
+    /// <c>type</c> IDL attribute returns.
+    /// </summary>
+    /// <remarks>
+    /// The value is not trimmed: <c>type=" checkbox "</c> is invalid and so a text field, as the
+    /// user-agent sheet's <c>input[type="checkbox"]</c> selector also reads it. The element's own
+    /// name is not checked; the attribute is read the same way on any element.
+    /// </remarks>
+    // Broiler-AI:           Origin=AI; Spec=WHATWG-HTML s4.10.5; IP=Low; Security=Medium; Resources=1; Fingerprint=TBF
+    // Broiler-Falsified-If: an input with type="Submit" is reported as text, or one with type="foo" or no type as anything but text
+    // Broiler-Human:        PENDING
+    public static string GetInputType(DomElement input)
+    {
+        ArgumentNullException.ThrowIfNull(input);
+        return input.GetAttributeByQualifiedName("type") is { } type && InputTypeKeywords.TryGetValue(type, out var keyword)
+            ? keyword
+            : "text";
+    }
 
     /// <summary>
     /// Checks whether <paramref name="element"/> is a listed form-associated control (HTML §4.10.1.1:
