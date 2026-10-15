@@ -331,9 +331,19 @@ fix once the package is bumped.
   they change with the pin bump and need no code of their own; its `document.write` passes
   `TagName.ToLowerInvariant()` and needs the element overload. The serializer opt-in
   above applies here too: `svgStyle.innerHTML = '&lt;/style&gt;…'` now leaves decoded text
-  in an SVG `style`. An HTML `<title>` in fragment markup still goes to the synthetic
-  document's head and is lost, in an HTML context and at an integration point alike, where
-  a browser keeps it in place.
+  in an SVG `style`.
+- An HTML `<title>` goes in the head only before the body has started. After that, "in
+  body" processes it with the "in head" rules (HTML §13.2.6.4.7), which insert it at the
+  current node, or foster it out of a table; every fragment whose context is not the `html`
+  or `head` element is past that point. Every title outside a template used to go in the
+  head, so `div.innerHTML = '<title>t</title>x'` gave just `x` — the title went to the head
+  of the synthetic document the fragment is parsed in, and was lost — in an HTML context and
+  at an integration point (`foreignObject`, `desc`, an SVG `title`, `mi`, …) alike, and a
+  `<title>` in a document's body moved into its head. A `<title/>` is opened like any other,
+  since the flag is not acknowledged on a non-void HTML element. The result's `Title` is
+  still the text of the first HTML title element in tree order, which is now settled after
+  the parse: a title fostered out of a table is placed after it (before it, in the
+  Standard), so a title in one of its cells can come first.
 - `ParseFragment` no longer appends closing tags after the input. Unterminated input used
   to absorb them: an unclosed `script`, `style`, `noscript`, or comment read them as its
   text. With the new text states an unclosed `textarea`, `title`, `xmp`, `iframe`,

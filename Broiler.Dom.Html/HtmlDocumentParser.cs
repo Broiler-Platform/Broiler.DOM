@@ -377,9 +377,11 @@ public sealed class HtmlDocumentParser
         // dies with the parse, and a template that reaches a caller always carries its own
         // TemplateContents.
         var shadowContents = new Dictionary<DomElement, DomShadowRoot>();
-        // The document's title element: the first HTML title element the parse meets (HTML §4.2.2,
-        // "the title element"; document.title reads it). The result's Title is its text.
-        DomElement? documentTitle = null;
+        // The HTML title elements the parse inserts into the document — not into a template's contents
+        // or a declarative shadow root — in the order it meets them. The document's title element is
+        // the first of them in tree order (HTML §4.2.2, "the title element"; document.title reads
+        // it), settled once the tree is built, and the result's Title is its text.
+        List<DomElement>? titleElements = null;
         var bodyOpened = false;
 
         // The open elements no end tag in the markup may close: the body at the bottom of the stack,
@@ -645,19 +647,42 @@ public sealed class HtmlDocumentParser
 
                     // An SVG or MathML <title> — an inline icon's tooltip, its accessible name — never
                     // reaches this branch: the rules for foreign content (HTML §13.2.6.5) insert it
-                    // where it stands, above. This branch used to take every title outside a template,
-                    // which moved an icon's title out of its <svg> into the head and appended its text
-                    // to the document's title. A title at an HTML integration point is HTML content,
+                    // where it stands, above. A title at an HTML integration point is HTML content,
                     // and an HTML title element.
-                    if (tag.Equals("title", StringComparison.OrdinalIgnoreCase) &&
-                        !IsInTemplate(openElements))
+                    //
+                    // Before the body, the "before head", "in head" and "after head" modes all put a
+                    // title in the head. Once the body has started, "in body" processes it with the
+                    // "in head" rules (HTML §13.2.6.4.7), which insert it at the appropriate place for
+                    // inserting a node: the current node, or the foster parent in a table. Every
+                    // fragment whose context is not the html or head element is past that point
+                    // before its markup starts — the string wrapper opens the body, and an SVG or
+                    // MathML context opens it too. This branch used to put every title outside a
+                    // template in the head, so div.innerHTML = '<title>t</title>x' lost the title
+                    // with the synthetic document it is parsed in, and a <title> in the body moved
+                    // into the head. The title is always opened, a <title/> too: the flag is not
+                    // acknowledged on a non-void HTML element, and its text follows in RCDATA.
+                    if (tag.Equals("title", StringComparison.OrdinalIgnoreCase))
                     {
-                        headOpened = true;
                         var titleElement = CreateElement(document, token);
-                        head.AppendChild(titleElement);
+                        var inTemplate = IsInTemplate(openElements);
+                        if (!bodyOpened && !inTemplate)
+                        {
+                            headOpened = true;
+                            head.AppendChild(titleElement);
+                        }
+                        else
+                        {
+                            var titleParent = openElements.Count > 0 ? openElements.Peek() : body;
+                            var titleTarget = IsHtmlTablePart(titleParent)
+                                ? FosterParent(openElements, body)
+                                : InsertionPoint(titleParent, shadowContents);
+                            titleTarget.AppendChild(titleElement);
+                        }
+
                         openElements.Push(titleElement);
                         startTags?.TryAdd(titleElement, token.SourceOffset);
-                        documentTitle ??= titleElement;
+                        if (!inTemplate)
+                            (titleElements ??= []).Add(titleElement);
                         break;
                     }
 
@@ -838,7 +863,33 @@ public sealed class HtmlDocumentParser
 
         // Only the first HTML title element counts. The text of every title used to be appended, so
         // two titles in a head gave both, and an icon's SVG title joined the page's.
+        var documentTitle = FirstInTreeOrder(titleElements);
         return new HtmlDocumentParseResult(document, documentTitle?.TextContent.Trim() ?? string.Empty, diagnostics);
+    }
+
+    /// <summary>The element of <paramref name="elements"/> that comes first in tree order.</summary>
+    /// <remarks>
+    /// The first one the parse met is usually first in the tree too — a head title before any body
+    /// title, and each title in the body after everything inserted ahead of it — but not a fostered
+    /// one: content fostered out of a table is placed outside it, while a title the parse meets later,
+    /// in a cell, is inside it.
+    /// </remarks>
+    // Broiler-AI:           Origin=AI; Spec=WHATWG-HTML s4.2.2; IP=Low; Security=Low; Resources=1; Fingerprint=TBF
+    // Broiler-Falsified-If: a document whose first title in tree order is not the first one parsed, as in a table whose cell holds a title after one fostered out of it, reports the fostered title's text
+    // Broiler-Human:        PENDING
+    private static DomElement? FirstInTreeOrder(List<DomElement>? elements)
+    {
+        if (elements is null)
+            return null;
+
+        var first = elements[0];
+        for (var i = 1; i < elements.Count; i++)
+        {
+            if ((elements[i].CompareDocumentPosition(first) & DomDocumentPosition.Following) != 0)
+                first = elements[i];
+        }
+
+        return first;
     }
 
     // Broiler-AI:           Origin=AI; IP=Low; Security=High; Resources=6; Fingerprint=TBF
