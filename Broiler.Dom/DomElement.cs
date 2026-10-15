@@ -128,10 +128,54 @@ public class DomElement : DomNode
     // Broiler-AI:           Origin=AI; IP=Low; Security=Medium; Resources=2; Fingerprint=TBF
     // Broiler-Falsified-If: GetAttribute with a mixed-case name misses an attribute that SetAttribute stored under the same name
     // Broiler-Human:        PENDING
-    public string? GetAttribute(string qualifiedName)
+    public string? GetAttribute(string qualifiedName) =>
+        FindAttributeByName(qualifiedName) is { } attribute ? attribute.Value : null;
+
+    /// <summary>
+    /// The attribute the name-based methods (<see cref="GetAttribute"/>, <see cref="HasAttribute"/>,
+    /// <see cref="SetAttribute(string, string)"/>, <see cref="RemoveAttribute"/>) mean by
+    /// <paramref name="qualifiedName"/>: the attribute in no namespace with that name lowercased, as
+    /// before; failing that, one whose qualified name is that name lowercased, which finds an
+    /// attribute in a namespace by its prefixed name; and on an element outside the HTML namespace,
+    /// failing both, one whose qualified name matches in any ASCII case.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The HTML parser keeps the case of SVG and MathML attribute names and puts their
+    /// <c>xlink:</c>, <c>xml:</c> and <c>xmlns</c> attributes in a namespace (HTML §13.2.6.1), so a
+    /// parsed SVG element holds <c>viewBox</c> and an <c>href</c> in the XLink namespace. The first
+    /// lookup alone, the only one there used to be, found neither of them. The later lookups only
+    /// ever find more: every attribute found before is still found, first, by the same name.
+    /// </para>
+    /// <para>
+    /// The Standard's "get an attribute by name" (DOM §4.9) lowercases the name for an HTML element
+    /// only and then matches qualified names exactly, so on an SVG element <c>getAttribute("viewbox")</c>
+    /// is null in a browser and here finds <c>viewBox</c>. Making the lookup exact for foreign
+    /// elements, and the lowercasing HTML-only, is the separate correction <c>docs/roadmap.md</c>
+    /// records under D1: it changes what existing callers see, and a new attribute set by name on a
+    /// script-built SVG element is still stored lowercase.
+    /// </para>
+    /// </remarks>
+    // Broiler-AI:           Origin=AI; Spec=WHATWG-DOM s4.9; IP=Low; Security=Medium; Resources=2; Fingerprint=TBF
+    // Broiler-Falsified-If: on an SVG element holding a viewBox attribute, GetAttribute("viewBox") returns null, or on an element holding an XLink-namespace href GetAttribute("xlink:href") returns null
+    // Broiler-Human:        PENDING
+    private DomAttribute? FindAttributeByName(string qualifiedName)
     {
-        var key = (NamespaceUri: (string?)null, LocalName: qualifiedName.ToLowerInvariant());
-        return _attributes.TryGetValue(key, out var attribute) ? attribute.Value : null;
+        var lowered = qualifiedName.ToLowerInvariant();
+        if (_attributes.TryGetValue((null, lowered), out var attribute))
+            return attribute;
+
+        var foreign = !string.Equals(NamespaceUri, DomNamespaces.Html, StringComparison.Ordinal);
+        DomAttribute? caseless = null;
+        foreach (var candidate in _attributes.Values)
+        {
+            if (candidate.NamespaceUri is not null && string.Equals(candidate.QualifiedName, lowered, StringComparison.Ordinal))
+                return candidate;
+            if (foreign && caseless is null && string.Equals(candidate.QualifiedName, qualifiedName, StringComparison.OrdinalIgnoreCase))
+                caseless = candidate;
+        }
+
+        return caseless;
     }
 
     // Broiler-AI:           Origin=AI; IP=Low; Security=Medium; Resources=2; Fingerprint=TBF
@@ -147,17 +191,39 @@ public class DomElement : DomNode
     // Broiler-Falsified-If: a name containing U+212A KELVIN SIGN is folded to ASCII k, so onclic followed by that sign is stored as the onclick attribute
     // Broiler-Human:        PENDING
     public void SetAttribute(string qualifiedName, string value) =>
-        // Per DOM, Element.setAttribute() does NO namespace splitting: the whole
-        // qualified name is the attribute's local name (no namespace). This also
-        // keys identically to GetAttribute/RemoveAttribute below, and avoids
-        // throwing on prefixed names like SVG's "xlink:href".
-        SetAttributeCore(DomName.CreateLocal(qualifiedName.ToLowerInvariant()), value);
+        // Per DOM, Element.setAttribute() does NO namespace splitting: a new attribute's whole
+        // qualified name is its local name (no namespace), so a prefixed name like "xlink:href"
+        // does not throw. An attribute the name already finds (FindAttributeByName) — a parsed
+        // viewBox, or an xlink:href in the XLink namespace — is changed in place under its own
+        // name (DOM §4.9) rather than shadowed by a lowercase twin. A new one is stored lowercase.
+        SetAttributeCore(
+            FindAttributeByName(qualifiedName) is { } existing
+                ? existing.Name
+                : DomName.CreateLocal(qualifiedName.ToLowerInvariant()),
+            value);
+
+    /// <summary>
+    /// Sets the attribute named exactly <paramref name="name"/> — its namespace and local name — to
+    /// <paramref name="value"/>, adding it when there is none: the DOM's "set an attribute value"
+    /// with the name already decided, as the HTML parser decides it. Neither the case nor a colon in
+    /// the local name is touched, so a parsed SVG <c>viewBox</c> keeps its case and a foreign
+    /// <c>foo:bar</c> stays one name in no namespace.
+    /// </summary>
+    // Broiler-AI:           Origin=AI; IP=Low; Security=Medium; Resources=4; Fingerprint=TBF
+    // Broiler-Falsified-If: an attribute set from DomName.CreateLocal("viewBox") is stored under the local name viewbox, or one from DomName.CreateLocal("foo:bar") gets a prefix
+    // Broiler-Human:        PENDING
+    public void SetAttribute(DomName name, string value)
+    {
+        ArgumentNullException.ThrowIfNull(value);
+        SetAttributeCore(name, value);
+    }
 
     // Broiler-AI:           Origin=AI; IP=Low; Security=Medium; Resources=4; Fingerprint=TBF
     // Broiler-Falsified-If: RemoveAttribute with a mixed-case name leaves in place the attribute SetAttribute stored for it
     // Broiler-Human:        PENDING
     public bool RemoveAttribute(string qualifiedName) =>
-        RemoveAttributeCore(null, qualifiedName.ToLowerInvariant());
+        FindAttributeByName(qualifiedName) is { } attribute &&
+        RemoveAttributeCore(attribute.NamespaceUri, attribute.LocalName);
 
     /// <summary>
     /// Attempts to retrieve an attribute by its qualified name using ASCII case-insensitive comparison.

@@ -73,7 +73,13 @@ matching over the namespace-keyed attribute set:
 4. Record, but do not yet perform, the related spec correction: `getAttribute` should
    lowercase only for an HTML element in an HTML document. Changing the existing
    `GetAttribute` alters behavior for every consumer and needs its own pixel and WPT
-   baseline, so it is a separate item gated on D1 landing first.
+   baseline, so it is a separate item gated on D1 landing first. Foreign-content parsing
+   added only lookups that find more: the name-based methods now also find an attribute
+   in a namespace by its qualified name (`xlink:href`), and on an element outside the
+   HTML namespace one whose name differs in ASCII case (a parsed `viewBox`), and
+   `SetAttribute(string, string)` changes such an attribute in place. A new attribute set
+   by name is still stored lowercase, and `getAttribute("viewbox")` on an SVG element
+   still finds `viewBox`, where a browser returns null.
 
 **Exit gate:** one case-insensitive qualified-name lookup exists in the tree and it is in
 `Broiler.Dom`; the bridge's `Attributes.cs` accessor set and the `Broiler.CSS.Dom` and
@@ -277,9 +283,35 @@ fix once the package is bumped.
   `TryFindBaseHref_IgnoresABaseInsideAnIframesText` test can run after the bump. An end tag
   leaves the text only when it is the appropriate one: the same name in any ASCII case,
   then tab, LF, FF, space, `/`, or `>`. Script text uses the same test now, so
-  `</script\v>` no longer ends a script. The switch is still keyed by tag name, not by the
-  tree builder, so it is not namespace-aware (`<svg><title>` reads as RCDATA) and does not
-  apply to a self-closing start tag.
+  `</script\v>` no longer ends a script. Tokenized on its own, the switch is still keyed by
+  tag name, so a token scan reads `<svg><title>` as RCDATA and `<svg><style>` as RAWTEXT,
+  and it does not apply to a self-closing start tag. A parse asks the tree builder first
+  (next item).
+- `HtmlDocumentParser` builds foreign content (HTML §13.2.6.5): `<svg>` and `<math>` and
+  their descendants are created in the SVG and MathML namespaces, with the SVG tag names in
+  their camel case (`foreignObject`, `linearGradient`, …), the SVG and MathML attribute
+  names in theirs (`viewBox`, `definitionURL`, …) and the `xlink:`, `xml:` and `xmlns`
+  attributes in their namespaces. Every element used to be an HTML element with a lowercase
+  name. HTML integration points (`foreignObject`, `desc`, `title`, an `annotation-xml` with
+  an HTML encoding) and MathML text integration points hold HTML content again; the HTML
+  start tags that cannot appear in foreign content (`<p>`, `<div>`, `<img>`, …, and
+  `</p>`, `</br>`) close it; a self-closing start tag there opens nothing. The tokenizer asks
+  the tree builder whether a start tag is HTML content, so `<svg><style>`, `<svg><title>`
+  and `<svg><script>` read as markup, with character references decoded, and a CDATA
+  section in foreign content is text rather than a bogus comment. Parsed inline SVG now
+  round-trips through `HtmlSerializer`. The tree builder's scope and end-tag rules match
+  elements by namespace as well as name. Standalone token scans (`HtmlScriptScanner`, the
+  bridge's pre-parse scans) still read SVG `style` and `script` text as raw text, and
+  still find an SVG `<base>`; the tree no longer counts that one as the document's base.
+  **A consumer must serialize by namespace before it takes this parser.** Parsed SVG
+  `style` and `script` text is now decoded, so `&lt;/style&gt;` in it is a literal end tag.
+  A serialization adapter without `GetNamespace` writes that text raw, and a re-parse
+  closes the element there: HtmlBridge's `innerHTML` turns
+  `<svg><style>&lt;/style&gt;&lt;img …&gt;</style>` into a live `img` after one round trip.
+  The bridge needs its `GetNamespace` opt-in (and a namespace-aware raw-text check) in the
+  same pin bump. Its `getElementsByTagName` (lowercases the query, compares `TagName`
+  ordinally, so `foreignObject` matches nothing) and `localName` (lowercased) also need
+  fixing for parsed SVG.
 - `ParseFragment` no longer appends closing tags after the input. Unterminated input used
   to absorb them: an unclosed `script`, `style`, `noscript`, or comment read them as its
   text. With the new text states an unclosed `textarea`, `title`, `xmp`, `iframe`,

@@ -136,4 +136,92 @@ public sealed class DomElementAttributeTests
         Assert.Contains("xlink:href", names);
         Assert.Equal(2, names.Count);
     }
+
+    // The name-based methods find what the HTML parser creates on an SVG element: an attribute
+    // that keeps its case, by either spelling. A new name is still stored lowercase; making the
+    // lookup exact for foreign elements is the separate D1 correction in docs/roadmap.md.
+    [Fact(Timeout = 600000)]
+    public void Name_Based_Methods_Find_A_Foreign_Elements_Mixed_Case_Attribute()
+    {
+        var doc = new DomDocument();
+        var svg = doc.CreateElementNS(DomNamespaces.Svg, "svg");
+        svg.SetAttribute(DomName.CreateLocal("viewBox"), "0 0 10 10");
+
+        Assert.Equal("viewBox", Assert.Single(svg.AttributeQualifiedNames));
+        Assert.Equal("0 0 10 10", svg.GetAttribute("viewBox"));
+        Assert.Equal("0 0 10 10", svg.GetAttribute("viewbox"));
+        Assert.True(svg.HasAttribute("VIEWBOX"));
+
+        // Changed in place under its own name, not shadowed by a lowercase twin.
+        svg.SetAttribute("viewbox", "1 1 2 2");
+        Assert.Equal("viewBox", Assert.Single(svg.AttributeQualifiedNames));
+        Assert.Equal("1 1 2 2", svg.GetAttributeNS(null, "viewBox"));
+        Assert.True(svg.RemoveAttribute("viewBox"));
+        Assert.Empty(svg.Attributes);
+
+        svg.SetAttribute("preserveAspectRatio", "none");
+        Assert.Equal("preserveaspectratio", Assert.Single(svg.AttributeQualifiedNames));
+    }
+
+    [Fact(Timeout = 600000)]
+    public void An_Html_Elements_Name_Based_Lookup_Is_Not_Caseless()
+    {
+        // Only a foreign element falls back to a caseless match; on an HTML element an attribute
+        // whose stored name is not lowercase stays out of reach of the name-based methods.
+        var doc = new DomDocument();
+        var div = doc.CreateElement("div");
+        div.SetAttributeNS(null, "Foo", "1");
+
+        Assert.Null(div.GetAttribute("Foo"));
+        Assert.Equal("1", div.GetAttributeNS(null, "Foo"));
+    }
+
+    [Fact(Timeout = 600000)]
+    public void Name_Based_Methods_Still_Lowercase_For_An_Html_Element()
+    {
+        var doc = new DomDocument();
+        var div = doc.CreateElement("div");
+        div.SetAttribute("DATA-X", "1");
+
+        Assert.Equal("data-x", Assert.Single(div.AttributeQualifiedNames));
+        Assert.Equal("1", div.GetAttribute("Data-X"));
+        Assert.True(div.RemoveAttribute("DATA-x"));
+    }
+
+    [Fact(Timeout = 600000)]
+    public void Name_Based_Methods_Find_A_Namespaced_Attribute_By_Its_Qualified_Name()
+    {
+        var doc = new DomDocument();
+        var use = doc.CreateElementNS(DomNamespaces.Svg, "use");
+        use.SetAttributeNS(DomNamespaces.XLink, "xlink:href", "#a");
+
+        Assert.Equal("#a", use.GetAttribute("xlink:href"));
+
+        // Changed in place, not shadowed by a second attribute in no namespace.
+        use.SetAttribute("xlink:href", "#b");
+        var attribute = Assert.Single(use.Attributes.Values);
+        Assert.Equal(DomNamespaces.XLink, attribute.NamespaceUri);
+        Assert.Equal("#b", attribute.Value);
+
+        Assert.True(use.RemoveAttribute("xlink:href"));
+        Assert.Empty(use.Attributes);
+    }
+
+    [Fact(Timeout = 600000)]
+    public void CreateElement_And_SetAttribute_With_A_Name_Keep_It_Exactly()
+    {
+        var doc = new DomDocument();
+        var element = doc.CreateElement(DomName.CreateLocal(DomNamespaces.Svg, "a:b:c"));
+
+        Assert.Equal("a:b:c", element.LocalName);
+        Assert.Null(element.Prefix);
+        Assert.Equal(DomNamespaces.Svg, element.NamespaceUri);
+        Assert.Equal("foreignObject", doc.CreateElement(DomName.CreateLocal(DomNamespaces.Svg, "foreignObject")).LocalName);
+
+        element.SetAttribute(DomName.CreateLocal("foo:bar"), "1");
+        var attribute = Assert.Single(element.Attributes.Values);
+        Assert.Equal("foo:bar", attribute.LocalName);
+        Assert.Null(attribute.NamespaceUri);
+        Assert.Null(attribute.Name.Prefix);
+    }
 }

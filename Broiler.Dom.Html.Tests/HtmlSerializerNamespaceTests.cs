@@ -129,12 +129,14 @@ public sealed class HtmlSerializerNamespaceTests
         Assert.Equal("<div><br><script>a < b</script></div>", HtmlSerializer.Serialize(div));
     }
 
+    // Parsed HTML comes back as it went in. So does parsed SVG, now that the tree builder creates it
+    // in the SVG namespace with its camel case: this used to read <foreignobject> on both sides.
     [Fact(Timeout = 600000)]
     public void Parsed_Html_Serializes_As_Before()
     {
         const string body =
             "<body><p>a<br>b<img src=\"x\"></p><style>a < b {}</style><script>if (a < b) {}</script>" +
-            "<textarea>&lt;/textarea&gt;</textarea><svg><foreignobject><div>x</div></foreignobject></svg></body>";
+            "<textarea>&lt;/textarea&gt;</textarea><svg><foreignObject><div>x</div></foreignObject></svg></body>";
         var document = HtmlDocumentParser.ParseDocument("<!DOCTYPE html>" + body).Document;
 
         Assert.Equal(body, HtmlSerializer.Serialize(document.Body!));
