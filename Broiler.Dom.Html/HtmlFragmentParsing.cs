@@ -101,8 +101,17 @@ public static class HtmlFragmentParsing
     /// <param name="html">The fragment's markup.</param>
     /// <param name="options">Switches the markup does not answer.</param>
     /// <param name="fragment">The parsed fragment, when this returns <see langword="true"/>.</param>
+    /// <remarks>
+    /// An SVG or MathML context is parsed by its namespace
+    /// (<see cref="HtmlDocumentParser.ParseFragment(string, DomElement, HtmlParseOptions)"/>), so
+    /// markup set on an SVG <c>g</c> is SVG, and on a <c>foreignObject</c> HTML. It has no void
+    /// elements, so it always hosts the fragment. Any other context is parsed by its tag name, as
+    /// <see cref="TryBuildFragment(string, string, HtmlParseOptions, out DomDocumentFragment)"/>
+    /// parses it. That used to be every context, so an SVG context other than <c>svg</c> parsed its
+    /// markup as HTML, and an SVG <c>title</c> or <c>style</c> as text.
+    /// </remarks>
     // Broiler-AI:           Origin=AI; IP=Low; Security=High; Resources=5; Fingerprint=TBF
-    // Broiler-Falsified-If: markup set on a textarea or title element is parsed into elements rather than text
+    // Broiler-Falsified-If: markup set on a textarea or title element is parsed into elements rather than text, or markup set on an SVG g is parsed into HTML elements
     // Broiler-Human:        PENDING
     public static bool TryBuildFragment(
         DomElement contextElement,
@@ -111,6 +120,10 @@ public static class HtmlFragmentParsing
         [NotNullWhen(true)] out DomDocumentFragment? fragment)
     {
         ArgumentNullException.ThrowIfNull(contextElement);
-        return TryBuildFragment(contextElement.TagName, html, options, out fragment);
+        if (!HtmlForeignContent.IsSvgOrMathMl(contextElement))
+            return TryBuildFragment(contextElement.TagName, html, options, out fragment);
+
+        fragment = HtmlDocumentParser.ParseFragment(html ?? string.Empty, contextElement, options).Fragment;
+        return true;
     }
 }

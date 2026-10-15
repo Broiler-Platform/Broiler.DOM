@@ -333,6 +333,11 @@ public sealed class HtmlDocumentParser
     /// Whether to add the parse errors met to the diagnostics — <see cref="HtmlParseOptions.ReportParseErrors"/>
     /// for a document, never for the synthetic document a fragment is parsed in.
     /// </param>
+    /// <param name="fragmentContext">
+    /// For a fragment whose context is an SVG or MathML element: an element of <paramref name="document"/>
+    /// standing in for that context, not yet in any tree. It is appended to the body and opened before
+    /// the first token, so <paramref name="html"/> must be the caller's markup alone, with no wrapper.
+    /// </param>
     /// <inheritdoc cref="ParseDocument(string, DomDocument, HtmlParseOptions)"/>
     // Broiler-AI:           Origin=AI; IP=Low; Security=High; Resources=6; Fingerprint=TBF
     // Broiler-Falsified-If: markup between a <template>'s tags changes the live document, as a <body onload> start tag inside a template copies onload onto the document's body
@@ -342,7 +347,8 @@ public sealed class HtmlDocumentParser
         DomDocument? document,
         HtmlParseOptions? options,
         int declarativeShadowRootFloor,
-        bool reportParseErrors)
+        bool reportParseErrors,
+        DomElement? fragmentContext = null)
     {
         ArgumentNullException.ThrowIfNull(html);
         options ??= DefaultOptions;
@@ -377,8 +383,9 @@ public sealed class HtmlDocumentParser
         var bodyOpened = false;
 
         // The open elements no end tag in the markup may close: the body at the bottom of the stack,
-        // and in a fragment every element the string wrapper opened — the context element included,
-        // which the fragment parsing algorithm (§13.4) never puts on the stack at all.
+        // and in a fragment every element the string wrapper opened, or the foreign context element
+        // opened ahead of the markup — the context element included, which the fragment parsing
+        // algorithm (§13.4) never puts on the stack at all.
         var endTagFloor = Math.Max(1, declarativeShadowRootFloor);
 
         // An element an end tag stands for — the <p> of a stray </p>, the <br> of a </br> — inserted
@@ -535,6 +542,21 @@ public sealed class HtmlDocumentParser
         // accepted after content turned a quirks-mode page into a standards-mode one for every
         // consumer of the tree.
         var initialInsertionMode = true;
+
+        // A fragment in an SVG or MathML context starts with that context open, where the string
+        // wrapper's markup would have opened an HTML element of its name. Nothing is tokenized ahead
+        // of the caller's markup, so the tokenizer starts in the data state, which is the state
+        // §13.4 gives any context that is not an HTML element; and the parse is past the initial
+        // insertion mode and in the body, as "reset the insertion mode appropriately" leaves it for
+        // such a context ("in body"). The context is the current node until the markup opens an
+        // element, which makes it the adjusted current node the dispatcher below asks about.
+        if (fragmentContext is not null)
+        {
+            body.AppendChild(fragmentContext);
+            openElements.Push(fragmentContext);
+            bodyOpened = true;
+            initialInsertionMode = false;
+        }
 
         // The tokenizer asks this builder two questions HTML §13.2.5 leaves to tree construction:
         // whether a start tag's element is HTML (so a <style> or <title> switches it to RAWTEXT or
@@ -827,7 +849,11 @@ public sealed class HtmlDocumentParser
 
     /// <inheritdoc cref="ParseFragment(string, string)"/>
     /// <param name="html">The fragment's markup.</param>
-    /// <param name="contextTagName">The context element's tag name.</param>
+    /// <param name="contextTagName">
+    /// The context element's tag name. The context is an HTML element of that name, except that an
+    /// <c>svg</c> or <c>math</c> context starts foreign content; for an SVG or MathML context element
+    /// of any other name, pass the element (<see cref="ParseFragment(string, DomElement, HtmlParseOptions)"/>).
+    /// </param>
     /// <param name="options">
     /// Switches the markup does not answer. Declarative shadow roots belong to
     /// <c>setHTMLUnsafe</c> on this path and not to <c>innerHTML</c>, so a caller implementing the
@@ -851,6 +877,76 @@ public sealed class HtmlDocumentParser
         // child list, so that is where the fragment's nodes are.
         var parsed = context.TemplateContents ?? (DomNode)context;
         foreach (var child in parsed.ChildNodes.ToArray())
+            fragment.AppendChild(child);
+        return new HtmlFragmentParseResult(fragment, result.Diagnostics);
+    }
+
+    // Broiler-AI:           Origin=AI; IP=Low; Security=High; Resources=6; Fingerprint=TBF
+    // Broiler-Falsified-If: an innerHTML-style parse through this overload attaches a shadow root for a template in the markup whose shadowrootmode is open
+    // Broiler-Human:        PENDING
+    public static HtmlFragmentParseResult ParseFragment(string html, DomElement context) =>
+        ParseFragment(html, context, null);
+
+    /// <summary>
+    /// Parses <paramref name="html"/> as the HTML fragment parsing algorithm (HTML §13.4) does for
+    /// <paramref name="context"/>, by its namespace as well as its name.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// A context in the SVG or MathML namespace is the adjusted current node until the markup opens
+    /// an element, so the tree construction dispatcher (§13.2.6) sends the markup to the rules for
+    /// foreign content: <c>g.innerHTML = '&lt;rect/&gt;'</c> gives an SVG <c>rect</c>, with the SVG
+    /// tag and attribute name adjustments, and a <c>&lt;![CDATA[…]]&gt;</c> is text. The HTML start
+    /// tags that cannot appear in foreign content, and <c>&lt;/p&gt;</c> and <c>&lt;/br&gt;</c>, are
+    /// HTML elements in the fragment, as in a browser. An SVG <c>foreignObject</c>, <c>desc</c> or
+    /// <c>title</c>, a MathML <c>annotation-xml</c> whose <c>encoding</c> attribute is
+    /// <c>text/html</c> or <c>application/xhtml+xml</c>, and a MathML <c>mi</c>, <c>mo</c>,
+    /// <c>mn</c>, <c>ms</c> or <c>mtext</c> are integration points, whose content is HTML. Those
+    /// names are matched exactly, as the Standard matches them: an SVG element a script named
+    /// <c>foreignobject</c> is not an integration point. The tokenizer starts in the data state, so an
+    /// SVG <c>style</c>, <c>title</c> or <c>script</c> context reads its markup as markup.
+    /// </para>
+    /// <para>
+    /// Any other context is parsed by its local name, as
+    /// <see cref="ParseFragment(string, string, HtmlParseOptions)"/> parses it: an HTML element, and
+    /// also an element in another namespace or in none, which the Standard would treat as foreign
+    /// content in that namespace. The string overloads always take an HTML element of the name they
+    /// are given (an <c>svg</c> or <c>math</c> context excepted, whose wrapper markup starts foreign
+    /// content), so a caller with the element passes the element.
+    /// </para>
+    /// </remarks>
+    /// <param name="html">The fragment's markup.</param>
+    /// <param name="context">
+    /// The element the fragment is parsed for. It is only read: the parse opens a copy of it, with its
+    /// name and attributes, in the document the fragment's nodes belong to.
+    /// </param>
+    /// <param name="options">
+    /// Switches the markup does not answer. Declarative shadow roots belong to
+    /// <c>setHTMLUnsafe</c> on this path and not to <c>innerHTML</c>, so a caller implementing the
+    /// former passes them in and a caller implementing the latter does not.
+    /// </param>
+    // Broiler-AI:           Origin=AI; Spec=WHATWG-HTML s13.4; IP=Low; Security=High; Resources=6; Fingerprint=TBF
+    // Broiler-Falsified-If: a fragment parsed for an SVG g holds an HTML rect for '<rect/>', or one parsed for an SVG foreignObject holds an SVG div for '<div>'
+    // Broiler-Human:        PENDING
+    public static HtmlFragmentParseResult ParseFragment(string html, DomElement context, HtmlParseOptions? options)
+    {
+        ArgumentNullException.ThrowIfNull(html);
+        ArgumentNullException.ThrowIfNull(context);
+        if (!HtmlForeignContent.IsSvgOrMathMl(context))
+            return ParseFragment(html, context.LocalName, options);
+
+        // §13.4 creates a start tag token from the context's local name and attributes, for the
+        // integration point test among others; a copy carrying both answers the same questions.
+        var document = new DomDocument();
+        var contextCopy = document.CreateElement(context.Name);
+        foreach (var attribute in context.Attributes.Values)
+            contextCopy.SetAttribute(attribute.Name, attribute.Value);
+
+        // The floor is the body and the context: no end tag in the markup closes either, and a
+        // template directly in the markup does not attach a shadow root to the context.
+        var result = ParseDocument(html, document, options, declarativeShadowRootFloor: 2, reportParseErrors: false, contextCopy);
+        var fragment = document.CreateDocumentFragment();
+        foreach (var child in contextCopy.ChildNodes.ToArray())
             fragment.AppendChild(child);
         return new HtmlFragmentParseResult(fragment, result.Diagnostics);
     }
@@ -967,7 +1063,9 @@ public sealed class HtmlDocumentParser
     /// <para>
     /// The adjusted current node is the current node here. The Standard substitutes the context
     /// element when a fragment's stack holds only the html element; this builder opens the context
-    /// element itself, so it is already the current node.
+    /// element itself — through the string wrapper, or, for an SVG or MathML context, as a copy in
+    /// its own namespace (<see cref="ParseFragment(string, DomElement, HtmlParseOptions)"/>) — so it
+    /// is already the current node.
     /// </para>
     /// <para>
     /// This used to be decided from the open elements' names: an <c>svg</c> or <c>math</c> open

@@ -312,6 +312,28 @@ fix once the package is bumped.
   same pin bump. Its `getElementsByTagName` (lowercases the query, compares `TagName`
   ordinally, so `foreignObject` matches nothing) and `localName` (lowercased) also need
   fixing for parsed SVG.
+- A fragment is parsed for its context element by namespace as well as name (HTML §13.4):
+  `HtmlDocumentParser.ParseFragment(string, DomElement[, HtmlParseOptions])`. An SVG or
+  MathML context is opened ahead of the markup as a copy in its namespace, with its
+  attributes, instead of through a string wrapper, so it is the adjusted current node and
+  the rules for foreign content apply: `g.innerHTML = '<rect/>'` gives an SVG `rect`, with
+  the SVG name adjustments. A `foreignObject`, `desc`, `title`, HTML-encoded
+  `annotation-xml`, `mi`, `mo`, `mn`, `ms` or `mtext` context holds HTML; a tag that breaks
+  out of foreign content (`<p>`, `</p>`, `<font color>`, …) is an HTML child of the
+  fragment, as in a browser; a CDATA section is text; and an SVG `style`, `title` or
+  `script` context starts the tokenizer in the data state. `HtmlFragmentParsing.TryBuildFragment(DomElement, …)`
+  now routes SVG and MathML elements there; it used to pass `TagName`, so every such
+  context but `svg` parsed as HTML. The string overloads still take an HTML element of the
+  name (`svg` and `math` start foreign content through their wrapper), and so does a
+  context in another namespace or none, which the Standard would also treat as foreign
+  content. HtmlBridge's `innerHTML`, `outerHTML`, `insertAdjacentHTML`, shadow-root
+  `innerHTML` and `createContextualFragment` all reach `TryBuildFragment(DomElement)`, so
+  they change with the pin bump and need no code of their own; its `document.write` passes
+  `TagName.ToLowerInvariant()` and needs the element overload. The serializer opt-in
+  above applies here too: `svgStyle.innerHTML = '&lt;/style&gt;…'` now leaves decoded text
+  in an SVG `style`. An HTML `<title>` in fragment markup still goes to the synthetic
+  document's head and is lost, in an HTML context and at an integration point alike, where
+  a browser keeps it in place.
 - `ParseFragment` no longer appends closing tags after the input. Unterminated input used
   to absorb them: an unclosed `script`, `style`, `noscript`, or comment read them as its
   text. With the new text states an unclosed `textarea`, `title`, `xmp`, `iframe`,

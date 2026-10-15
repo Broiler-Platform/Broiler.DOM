@@ -113,6 +113,14 @@ internal static class HtmlForeignContent
     internal static bool IsHtml(DomElement element, string localName) =>
         IsHtml(element) && string.Equals(element.LocalName, localName, StringComparison.OrdinalIgnoreCase);
 
+    /// <summary>Whether <paramref name="element"/> is in the SVG or the MathML namespace.</summary>
+    // Broiler-AI:           Origin=AI; IP=None; Security=High; Resources=0; Fingerprint=TBF
+    // Broiler-Falsified-If: an HTML element, or one in no namespace, is reported as an SVG or MathML element
+    // Broiler-Human:        PENDING
+    internal static bool IsSvgOrMathMl(DomElement element) =>
+        string.Equals(element.NamespaceUri, DomNamespaces.Svg, StringComparison.Ordinal) ||
+        string.Equals(element.NamespaceUri, DomNamespaces.MathMl, StringComparison.Ordinal);
+
     /// <summary>
     /// Whether <paramref name="element"/> is a MathML text integration point (§13.2.6): a MathML
     /// <c>mi</c>, <c>mo</c>, <c>mn</c>, <c>ms</c> or <c>mtext</c>, whose text and start tags (other
