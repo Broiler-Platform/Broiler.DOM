@@ -157,6 +157,19 @@ public sealed class DomDocument : DomNode
     public DomElement CreateElementNS(string? namespaceUri, string qualifiedName) =>
         new(this, new DomName(namespaceUri, qualifiedName));
 
+    /// <summary>
+    /// Creates an element named exactly <paramref name="name"/>, with no case folding and no
+    /// validation beyond what built the name. This is the DOM's "create an element" algorithm with
+    /// the name already decided, which is how the HTML parser runs it: it creates an SVG
+    /// <c>foreignObject</c> in the SVG namespace with its camel case, and a foreign element named
+    /// <c>a:b:c</c> under that whole local name (<see cref="DomName.CreateLocal(string?, string)"/>),
+    /// where <see cref="CreateElementNS"/> would split off a prefix or throw.
+    /// </summary>
+    // Broiler-AI:           Origin=AI; IP=None; Security=Medium; Resources=2; Fingerprint=TBF
+    // Broiler-Falsified-If: an element created from DomName.CreateLocal in the SVG namespace with local name foreignObject reports a local name or namespace other than those
+    // Broiler-Human:        PENDING
+    public DomElement CreateElement(DomName name) => new(this, name);
+
     internal override DomNode CloneShallow(DomDocument ownerDocument) =>
         throw new InvalidOperationException("Document cloning is not supported by the Phase 1 kernel.");
 

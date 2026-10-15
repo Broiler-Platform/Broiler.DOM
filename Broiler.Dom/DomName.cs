@@ -108,7 +108,7 @@ public readonly record struct DomName
 }
 
 // Broiler-AI:           Origin=AI; IP=None; Security=High; Resources=0; Fingerprint=TBF
-// Broiler-Falsified-If: one of the five URIs differs from its published namespace name, so the namespace checks and the parser's namespace decisions disagree with names created by script
+// Broiler-Falsified-If: one of the six URIs differs from its published namespace name, so the namespace checks and the parser's namespace decisions disagree with names created by script
 // Broiler-Human:        PENDING
 public static class DomNamespaces
 {
@@ -124,6 +124,15 @@ public static class DomNamespaces
     // Broiler-Falsified-If: MathMl differs by any character from http://www.w3.org/1998/Math/MathML, so an element created with that URI through CreateElementNS is not treated as a MathML element
     // Broiler-Human:        PENDING
     public const string MathMl = "http://www.w3.org/1998/Math/MathML";
+    /// <summary>
+    /// The XLink namespace (Infra §8). No element is created in it; the HTML parser puts the
+    /// <c>xlink:</c> attributes of SVG and MathML elements there (HTML §13.2.6.1, "adjust foreign
+    /// attributes").
+    /// </summary>
+    // Broiler-AI:           Origin=AI; IP=None; Security=High; Resources=0; Fingerprint=TBF
+    // Broiler-Falsified-If: XLink differs by any character from http://www.w3.org/1999/xlink, so a parsed xlink:href is not found by GetAttributeNS with that URI
+    // Broiler-Human:        PENDING
+    public const string XLink = "http://www.w3.org/1999/xlink";
     // Broiler-AI:           Origin=AI; IP=None; Security=High; Resources=0; Fingerprint=TBF
     // Broiler-Falsified-If: Xml differs by any character from http://www.w3.org/XML/1998/namespace, so the xml prefix is refused with the XML namespace or accepted with another
     // Broiler-Human:        PENDING

@@ -30,11 +30,13 @@ namespace Broiler.Dom.Html.Tests;
 /// of the input.
 /// </para>
 /// <para>
-/// The tokenizer still decides this by tag name, standing in for the tree builder that makes the
-/// switch in the Standard, and it still does not switch on a self-closing start tag. The first is
-/// what keeps the token stream right for scanners with no tree builder behind them, and is wrong
-/// only inside SVG and MathML; the second keeps <c>&lt;svg&gt;&lt;title/&gt;</c> from swallowing
-/// the page. Neither departure is pinned here, only the cases where the two agree with the spec.
+/// Tokenized on its own, as here, the tokenizer still decides this by tag name, standing in for the
+/// tree builder that makes the switch in the Standard, and it still does not switch on a self-closing
+/// start tag. The first is what keeps the token stream right for scanners with no tree builder behind
+/// them, and is wrong only inside SVG and MathML, where a parse asks the tree builder instead
+/// (<c>ForeignContentParsingTests</c>); the second keeps <c>&lt;svg&gt;&lt;title/&gt;</c> from
+/// swallowing the page. Neither departure is pinned here, only the cases where the two agree with the
+/// spec.
 /// </para>
 /// </remarks>
 public sealed class ElementsThatContainOnlyTextTests

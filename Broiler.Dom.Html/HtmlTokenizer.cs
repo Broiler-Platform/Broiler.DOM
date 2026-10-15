@@ -56,6 +56,29 @@ public sealed class HtmlToken(TokenType type, string? name = null, string? data 
 }
 
 /// <summary>
+/// What tokenization asks of tree construction (HTML §13.2.5): where the tokenizer's next state
+/// depends on the tree being built, the tree builder that consumes the tokens answers.
+/// </summary>
+// Broiler-AI:           Origin=AI; Spec=WHATWG-HTML s13.2.5; IP=None; Security=High; Resources=0; Fingerprint=TBF
+// Broiler-Human:        PENDING
+internal interface IHtmlTokenizerFeedback
+{
+    /// <summary>
+    /// Whether the adjusted current node is an element outside the HTML namespace, where the
+    /// markup declaration open state (§13.2.5.42) reads <c>&lt;![CDATA[</c> as a CDATA section
+    /// rather than a bogus comment.
+    /// </summary>
+    bool AdjustedCurrentNodeIsForeign { get; }
+
+    /// <summary>
+    /// Whether <paramref name="startTag"/>, which has just been read, will be inserted as an HTML
+    /// element — so that a <c>title</c>, <c>style</c> or <c>script</c> switches the tokenizer to its
+    /// text state — rather than as an SVG or MathML element, which leaves it in the data state.
+    /// </summary>
+    bool IsHtmlContent(HtmlToken startTag);
+}
+
+/// <summary>
 /// Simplified WHATWG-aligned HTML tokenizer (§13.2.5) that processes an
 /// HTML string character-by-character.
 /// Shared between Broiler.HTML rendering, canonical DOM parsing, and the
@@ -98,13 +121,25 @@ public sealed class HtmlTokenizer
     // Broiler-AI:           Origin=AI; IP=Low; Security=High; Resources=6; Fingerprint=TBF
     // Broiler-Falsified-If: enumerating the returned sequence a second time continues from the first enumeration's position instead of restarting at the start of the input
     // Broiler-Human:        PENDING
-    internal IEnumerable<HtmlToken> TokenizeWith(string html, HtmlParseErrorSink? errors)
+    internal IEnumerable<HtmlToken> TokenizeWith(string html, HtmlParseErrorSink? errors) =>
+        TokenizeWith(html, errors, treeBuilder: null);
+
+    /// <summary>
+    /// Tokenizes <paramref name="html"/> for a tree builder that answers what tokenization asks of
+    /// tree construction (<see cref="IHtmlTokenizerFeedback"/>). The sequence is lazy, and the
+    /// builder consumes each token before the next is read, so every answer reflects the tokens
+    /// before it.
+    /// </summary>
+    // Broiler-AI:           Origin=AI; IP=Low; Security=High; Resources=6; Fingerprint=TBF
+    // Broiler-Falsified-If: with a tree builder that reports foreign content, <svg><style><b>x</b></style> yields one character token holding <b>x</b> instead of a b start tag
+    // Broiler-Human:        PENDING
+    internal IEnumerable<HtmlToken> TokenizeWith(string html, HtmlParseErrorSink? errors, IHtmlTokenizerFeedback? treeBuilder)
     {
         ArgumentNullException.ThrowIfNull(html);
         // Construct inside the iterator so repeated or interleaved enumerations never share state.
         var input = NormalizeNewlines(html);
         errors?.Attach(input);
-        foreach (var token in new Scanner(input, errors).Read())
+        foreach (var token in new Scanner(input, errors, treeBuilder).Read())
             yield return token;
     }
 
@@ -122,7 +157,7 @@ public sealed class HtmlTokenizer
     // Broiler-AI:           Origin=AI; IP=Low; Security=High; Resources=6; Fingerprint=TBF
     // Broiler-Falsified-If: a tag or attribute name spelled with U+212A KELVIN SIGN is lowercased to an ASCII k, so a name a spec tokenizer keeps as unknown arrives as onclick or link
     // Broiler-Human:        PENDING
-    private sealed class Scanner(string input, HtmlParseErrorSink? errors)
+    private sealed class Scanner(string input, HtmlParseErrorSink? errors, IHtmlTokenizerFeedback? treeBuilder)
     {
         // Broiler-AI:           Origin=AI; IP=None; Security=None; Resources=0; Fingerprint=TBF
         // Broiler-Human:        PENDING
@@ -158,7 +193,10 @@ public sealed class HtmlTokenizer
             RawText,
             // PLAINTEXT state (HTML §13.2.5.5): the rest of the input is text. No end tag, never
             // decoded, no way out.
-            PlainText
+            PlainText,
+            // CDATA section state (HTML §13.2.5.69–71): in foreign content only, the text up to the
+            // first "]]>", never decoded.
+            CdataSection
         }
 
         // Elements that contain only text (HTML §13.2.6.2), and the state each start tag leaves the
@@ -177,15 +215,19 @@ public sealed class HtmlTokenizer
         // right. HtmlScriptScanner and the host's pre-parse scans (base href, CSP and refresh metas,
         // preload, doctype) read its tokens with no tree builder behind them, the way a browser's
         // preload scanner does, and they must not find a script spelled in a textarea any more than
-        // the tree may hold one. The price is that the tokenizer cannot see the tree builder's
-        // adjusted current node. The Standard switches only for an element inserted under the rules
-        // for HTML content; in SVG or MathML (§13.2.6.5, foreign content) these names are ordinary
-        // foreign elements and the tokenizer stays in the data state. So here `<svg><title>` reads
-        // RCDATA (markup inside an SVG title becomes text; a plain `<title>Icon</title>` reads the
-        // same either way), `<svg><style>` and `<svg><script>` read RAWTEXT, and the names no one
-        // writes in SVG (`<svg><textarea>`, `<svg><plaintext>`) would swallow what the Standard parses
-        // as markup. At an integration point (`<foreignObject>`, `<math><mtext>`, ...) the rules for
-        // HTML content apply and this agrees with the Standard.
+        // the tree may hold one.
+        //
+        // The Standard switches only for an element inserted under the rules for HTML content; in
+        // SVG or MathML (§13.2.6.5, foreign content) these names are ordinary foreign elements and
+        // the tokenizer stays in the data state. Only the tree builder knows which applies, so when
+        // HtmlDocumentParser drives the tokenizer it is asked first (IHtmlTokenizerFeedback), and
+        // `<svg><style>`, `<svg><title>` and `<svg><script>` read as markup, as in a browser. With no
+        // tree builder behind it the tokenizer still switches by name alone: a scan reads an SVG
+        // title as RCDATA and an SVG style or script as RAWTEXT — the same text as the parse unless
+        // that text holds a '<' — and the names no one writes in SVG (`<svg><textarea>`,
+        // `<svg><plaintext>`) swallow what the parse reads as markup. A scanner cannot follow
+        // foreign content without modelling the stack of open elements, and one that guessed wrong
+        // after an unclosed <svg> would read every later <script> as markup.
         // Broiler-AI:           Origin=AI; Spec=WHATWG-HTML s13.2.6.2; IP=Low; Security=High; Resources=0; Fingerprint=TBF
         // Broiler-Falsified-If: a textarea or title start tag leaves the tokenizer in the data state, so <title><script> yields a script start tag
         // Broiler-Human:        PENDING
@@ -209,6 +251,7 @@ public sealed class HtmlTokenizer
         private int _rawTextStart;                 // where that start tag began, for eof-in-text
         private int _tokenStart;                   // the '<' of the tag, comment or DOCTYPE being read
         private readonly HtmlParseErrorSink? _errors = errors;
+        private readonly IHtmlTokenizerFeedback? _treeBuilder = treeBuilder;
         private readonly string _input = input;
         private int _pos;
         private State _state;
@@ -709,6 +752,14 @@ public sealed class HtmlTokenizer
                             _tag.Clear();
                             _state = State.Doctype;
                         }
+                        else if (Ahead("[CDATA[") && _treeBuilder?.AdjustedCurrentNodeIsForeign == true)
+                        {
+                            // Markup declaration open state (§13.2.5.42): a CDATA section is one only
+                            // where the adjusted current node is an SVG or MathML element, so
+                            // `<svg><style><![CDATA[ a > b {} ]]></style>` is the style's text.
+                            _pos += 7;
+                            _state = State.CdataSection;
+                        }
                         else
                         {
                             if (Ahead("[CDATA["))
@@ -720,6 +771,25 @@ public sealed class HtmlTokenizer
                         }
 
                         break;
+                    case State.CdataSection:
+                    {
+                        // CDATA section, bracket and end states (§13.2.5.69–71): everything up to the
+                        // first "]]>" is text, with no character references and no tags. The data
+                        // state flushed any pending text at the '<', so the run is emitted on its own;
+                        // the tree builder joins it to the text around it.
+                        var end = _input.IndexOf("]]>", _pos, StringComparison.Ordinal);
+                        if (end < 0)
+                        {
+                            Error("eof-in-cdata", "The input ends inside a CDATA section: everything after '<![CDATA[' is its text.", _tokenStart);
+                            end = _input.Length;
+                        }
+
+                        if (end > _pos)
+                            yield return new HtmlToken(TokenType.Character, data: _input[_pos..end]);
+                        _pos = Math.Min(end + 3, _input.Length);
+                        _state = State.Data;
+                        break;
+                    }
                     case State.CommentStart:
                         if (eof)
                         {
@@ -971,8 +1041,12 @@ public sealed class HtmlTokenizer
             // here, becomes the title element's children (a separate inconsistency of the tree builder).
             // An SVG or MathML `<title/>` is not: the tree builder inserts it as the foreign element it
             // is, and a self-closing one opens nothing.
+            //
+            // A tree builder, when there is one, decides first whether the element is HTML at all: in
+            // foreign content (§13.2.6.5) a style, title or script is an SVG or MathML element and the
+            // tokenizer stays in the data state.
             _state = State.Data;
-            if (!_isEnd && !_selfClose)
+            if (!_isEnd && !_selfClose && _treeBuilder?.IsHtmlContent(tok) != false)
             {
                 _state = TextStateFor(tagName);
                 if (_state is State.RcData or State.RawText)

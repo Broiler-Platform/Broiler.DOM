@@ -28,7 +28,32 @@ public sealed record HtmlSerializationAdapter<TNode>(
     Func<TNode, IEnumerable<KeyValuePair<string, string>>> GetAttributes,
     Func<TNode, IEnumerable<KeyValuePair<string, string>>> GetStyles,
     Func<TNode, string?> GetText,
-    Func<TNode, string?> GetRawInnerHtml);
+    Func<TNode, string?> GetRawInnerHtml)
+{
+    /// <summary>
+    /// The namespace URI of an element node, or <c>null</c> for an element in no namespace. Only
+    /// asked of element nodes.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// HTML §13.3 reads the namespace before the name: it applies the void and raw-text rules to
+    /// HTML elements only, and it writes a foreign element's name in the case it has. Supplying
+    /// this delegate selects those rules. <see cref="GetName"/> should then return the local name
+    /// for an HTML, SVG or MathML element and the qualified name for any other, as the canonical
+    /// adapter does.
+    /// </para>
+    /// <para>
+    /// Leaving it unset keeps the behaviour that predates it: every element is treated as HTML,
+    /// so its name is lowercased and matched against the void and raw-text sets whatever its
+    /// namespace. It is an init-only property rather than a constructor parameter so that the
+    /// seven-delegate constructor, which existing adapters compile against, stays unchanged.
+    /// </para>
+    /// </remarks>
+    // Broiler-AI:           Origin=AI; Spec=WHATWG-HTML s13.3; IP=None; Security=High; Resources=1; Fingerprint=TBF
+    // Broiler-Falsified-If: an adapter whose GetNamespace returns the SVG namespace for a style element has that element's text child <img src=x onerror=f()> written unescaped
+    // Broiler-Human:        PENDING
+    public Func<TNode, string?>? GetNamespace { get; init; }
+}
 
 // Broiler-AI:           Origin=AI; IP=None; Security=High; Resources=1; Fingerprint=TBF
 // Broiler-Falsified-If: a default-constructed options value has EncodeTextNodes false, so text nodes are written without escaping
@@ -82,10 +107,25 @@ public static class HtmlSerializer
     /// Whether <paramref name="tagName"/> is an element whose text content is
     /// serialized literally rather than HTML-escaped (see <see cref="RawTextElements"/>).
     /// </summary>
+    /// <remarks>
+    /// Matches the name alone, so it answers for an HTML element. When the element may be
+    /// foreign, use the overload that takes its namespace: an SVG <c>style</c> is not raw text.
+    /// </remarks>
     // Broiler-AI:           Origin=AI; IP=None; Security=High; Resources=0; Fingerprint=TBF
     // Broiler-Falsified-If: IsRawTextElement returns true for textarea, so textarea text holding </textarea><img src=x onerror=f()> is written unescaped and re-parses as an img element
     // Broiler-Human:        PENDING
     public static bool IsRawTextElement(string tagName) => RawTextElements.Contains(tagName);
+
+    /// <summary>
+    /// Whether an element with <paramref name="localName"/> in <paramref name="namespaceUri"/>
+    /// has its text content serialized literally. Only HTML elements do (HTML §13.3): the text
+    /// of an SVG or MathML <c>style</c> or <c>script</c> is escaped like any other.
+    /// </summary>
+    // Broiler-AI:           Origin=AI; Spec=WHATWG-HTML s13.3; IP=None; Security=High; Resources=0; Fingerprint=TBF
+    // Broiler-Falsified-If: IsRawTextElement returns true for style in the SVG namespace, so an adapter that consults it writes <img src=x onerror=f()> under an SVG style unescaped
+    // Broiler-Human:        PENDING
+    public static bool IsRawTextElement(string localName, string? namespaceUri) =>
+        IsHtmlNamespace(namespaceUri) && IsRawTextElement(localName);
 
     /// <summary>
     /// Returns <c>true</c> when <paramref name="property"/> is a CSS shorthand
@@ -208,7 +248,17 @@ public static class HtmlSerializer
                 continue;
             }
 
-            var tagName = adapter.GetName(node).ToLowerInvariant();
+            // HTML §13.3 lowercases nothing: it writes the local name of an HTML, SVG or MathML
+            // element and the qualified name of any other, and GetName supplies that. HTML names
+            // are still lowercased for adapters that hand back an uppercase tagName. An adapter
+            // that supplies no namespace has every element treated as HTML, as before it could.
+            var isHtml = adapter.GetNamespace is not { } getNamespace || IsHtmlNamespace(getNamespace(node));
+            var elementName = adapter.GetName(node);
+            var tagName = isHtml ? elementName.ToLowerInvariant() : elementName;
+            // Void and raw text are properties of HTML elements only: an SVG <link> keeps its
+            // children and end tag, and the text of an SVG <style> is escaped, because in foreign
+            // content a parser reads that text as markup again.
+            var rawText = isHtml && IsRawTextElement(tagName);
             builder.Append('<').Append(tagName);
             foreach (var (name, value) in adapter.GetAttributes(node))
                 builder.Append(' ').Append(name).Append("=\"").Append(Encode(value)).Append('"');
@@ -227,7 +277,7 @@ public static class HtmlSerializer
             }
 
             builder.Append('>');
-            if (VoidElements.Contains(tagName))
+            if (isHtml && VoidElements.Contains(tagName))
                 continue;
 
             var children = adapter.GetChildren(node).ToArray();
@@ -236,13 +286,13 @@ public static class HtmlSerializer
                 // Defer the close tag until after every child is written, then
                 // push the children so they pop (and serialize) in document order.
                 stack.Push(new PendingNode<TNode>(default!, $"</{tagName}>", nodeDepth));
-                PushChildren(stack, children, nodeDepth + 1, IsRawTextElement(tagName));
+                PushChildren(stack, children, nodeDepth + 1, rawText);
                 continue;
             }
 
             if (adapter.GetText(node) is { Length: > 0 } text)
             {
-                builder.Append(IsRawTextElement(tagName) ? text : Encode(text));
+                builder.Append(rawText ? text : Encode(text));
             }
             else if (adapter.GetRawInnerHtml(node) is { Length: > 0 } rawInnerHtml)
             {
@@ -268,8 +318,27 @@ public static class HtmlSerializer
             stack.Push(new PendingNode<TNode>(buffer[index], null, depth, rawText));
     }
 
+    // Broiler-AI:           Origin=AI; IP=None; Security=High; Resources=0; Fingerprint=TBF
+    // Broiler-Falsified-If: IsHtmlNamespace returns true for null or for the SVG namespace, so an element in no namespace or an SVG element is lowercased and matched against the void and raw-text sets
+    // Broiler-Human:        PENDING
+    private static bool IsHtmlNamespace(string? namespaceUri) =>
+        string.Equals(namespaceUri, DomNamespaces.Html, StringComparison.Ordinal);
+
+    /// <summary>
+    /// The name HTML §13.3 writes for <paramref name="element"/>: its local name when it is an
+    /// HTML, SVG or MathML element, so a prefix such as <c>svg:</c> is dropped, and its qualified
+    /// name otherwise.
+    /// </summary>
+    // Broiler-AI:           Origin=AI; Spec=WHATWG-HTML s13.3; IP=None; Security=Medium; Resources=0; Fingerprint=TBF
+    // Broiler-Falsified-If: an element created with CreateElementNS in the SVG namespace as svg:rect is written as <svg:rect>, or one in another namespace as x:Widget is written without its prefix
+    // Broiler-Human:        PENDING
+    private static string SerializationName(DomElement element) =>
+        element.NamespaceUri is DomNamespaces.Html or DomNamespaces.Svg or DomNamespaces.MathMl
+            ? element.LocalName
+            : element.TagName;
+
     // Broiler-AI:           Origin=AI; IP=Low; Security=High; Resources=3; Fingerprint=TBF
-    // Broiler-Falsified-If: the canonical adapter returns a non-null GetRawInnerHtml value for some DomNode, so that string is appended to the output with no escaping
+    // Broiler-Falsified-If: the canonical adapter returns a non-null GetRawInnerHtml value for some DomNode, so that string is appended to the output with no escaping, or supplies no namespace, so an SVG linearGradient element is written as <lineargradient>
     // Broiler-Human:        PENDING
     private static readonly HtmlSerializationAdapter<DomNode> CanonicalAdapter = new(
         GetKind: static node => node switch
@@ -283,7 +352,7 @@ public static class HtmlSerializer
         },
         GetName: static node => node switch
         {
-            DomElement element => element.TagName,
+            DomElement element => SerializationName(element),
             DomDocumentType doctype => doctype.Name,
             _ => string.Empty
         },
@@ -300,5 +369,8 @@ public static class HtmlSerializer
             : [],
         GetStyles: static _ => [],
         GetText: static node => node is DomCharacterData data ? data.Data : null,
-        GetRawInnerHtml: static _ => null);
+        GetRawInnerHtml: static _ => null)
+    {
+        GetNamespace = static node => (node as DomElement)?.NamespaceUri,
+    };
 }

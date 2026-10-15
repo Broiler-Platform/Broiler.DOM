@@ -154,21 +154,10 @@ public sealed class HtmlDocumentParser
     };
 
     /// <summary>
-    /// The SVG and MathML elements whose content is parsed under the rules for HTML content again
-    /// (HTML §13.2.6.5, "HTML integration point" and "MathML text integration point").
-    /// </summary>
-    // Broiler-AI:           Origin=AI; IP=None; Security=High; Resources=1; Fingerprint=TBF
-    // Broiler-Falsified-If: a start tag inside <svg><foreignObject> is judged to be in foreign content, though that integration point returns its content to HTML
-    // Broiler-Human:        PENDING
-    private static readonly HashSet<string> ForeignIntegrationPoints = new(StringComparer.OrdinalIgnoreCase)
-    {
-        "foreignObject", "desc", "title", "mi", "mo", "mn", "ms", "mtext", "annotation-xml",
-    };
-
-    /// <summary>
-    /// The elements that bound "has an element in scope" (HTML §13.2.4.2), by name: the HTML ones and
-    /// the MathML and SVG integration points. The list item, button and table scopes below extend or
-    /// replace them, as the Standard's do.
+    /// The HTML elements that bound "has an element in scope" (HTML §13.2.4.2), by name. The MathML
+    /// and SVG elements that bound it too are tested by namespace
+    /// (<see cref="HtmlForeignContent.IsForeignScopeBoundary"/>). The list item, button and table
+    /// scopes below extend or replace these, as the Standard's do.
     /// </summary>
     // Broiler-AI:           Origin=AI; Spec=WHATWG-HTML s13.2.4.2; IP=None; Security=High; Resources=1; Fingerprint=TBF
     // Broiler-Falsified-If: a </div> closes a <div> that lies outside an open <table>, <td> or <template>
@@ -176,7 +165,6 @@ public sealed class HtmlDocumentParser
     private static readonly HashSet<string> ScopeBoundaries = new(StringComparer.OrdinalIgnoreCase)
     {
         "applet", "caption", "html", "table", "td", "th", "marquee", "object", "template",
-        "mi", "mo", "mn", "ms", "mtext", "annotation-xml", "foreignObject", "desc", "title",
     };
 
     // Broiler-AI:           Origin=AI; Spec=WHATWG-HTML s13.2.4.2; IP=None; Security=High; Resources=1; Fingerprint=TBF
@@ -248,8 +236,9 @@ public sealed class HtmlDocumentParser
     };
 
     /// <summary>
-    /// The "special" category (HTML §13.2.4.2), by name: the elements an end tag with no rule of its
-    /// own — "any other end tag" — does not reach past.
+    /// The "special" category (HTML §13.2.4.2), by name: the HTML elements an end tag with no rule of
+    /// its own — "any other end tag" — does not reach past. Its MathML and SVG members are the
+    /// foreign scope boundaries (<see cref="HtmlForeignContent.IsForeignScopeBoundary"/>).
     /// </summary>
     // Broiler-AI:           Origin=AI; Spec=WHATWG-HTML s13.2.4.2; IP=None; Security=High; Resources=1; Fingerprint=TBF
     // Broiler-Falsified-If: a stray </span> reaches past an open <div> or <td> and closes a <span> outside it
@@ -264,7 +253,6 @@ public sealed class HtmlDocumentParser
         "object", "ol", "p", "param", "plaintext", "pre", "script", "search", "section", "select", "source",
         "style", "summary", "table", "tbody", "td", "template", "textarea", "tfoot", "th", "thead", "title",
         "tr", "track", "ul", "wbr", "xmp",
-        "mi", "mo", "mn", "ms", "mtext", "annotation-xml", "foreignObject", "desc",
     };
 
     // Broiler-AI:           Origin=AI; IP=None; Security=High; Resources=1; Fingerprint=TBF
@@ -345,6 +333,11 @@ public sealed class HtmlDocumentParser
     /// Whether to add the parse errors met to the diagnostics — <see cref="HtmlParseOptions.ReportParseErrors"/>
     /// for a document, never for the synthetic document a fragment is parsed in.
     /// </param>
+    /// <param name="fragmentContext">
+    /// For a fragment whose context is an SVG or MathML element: an element of <paramref name="document"/>
+    /// standing in for that context, not yet in any tree. It is appended to the body and opened before
+    /// the first token, so <paramref name="html"/> must be the caller's markup alone, with no wrapper.
+    /// </param>
     /// <inheritdoc cref="ParseDocument(string, DomDocument, HtmlParseOptions)"/>
     // Broiler-AI:           Origin=AI; IP=Low; Security=High; Resources=6; Fingerprint=TBF
     // Broiler-Falsified-If: markup between a <template>'s tags changes the live document, as a <body onload> start tag inside a template copies onload onto the document's body
@@ -354,7 +347,8 @@ public sealed class HtmlDocumentParser
         DomDocument? document,
         HtmlParseOptions? options,
         int declarativeShadowRootFloor,
-        bool reportParseErrors)
+        bool reportParseErrors,
+        DomElement? fragmentContext = null)
     {
         ArgumentNullException.ThrowIfNull(html);
         options ??= DefaultOptions;
@@ -383,14 +377,17 @@ public sealed class HtmlDocumentParser
         // dies with the parse, and a template that reaches a caller always carries its own
         // TemplateContents.
         var shadowContents = new Dictionary<DomElement, DomShadowRoot>();
-        // The document's title element: the first HTML title element the parse meets (HTML §4.2.2,
-        // "the title element"; document.title reads it). The result's Title is its text.
-        DomElement? documentTitle = null;
+        // The HTML title elements the parse inserts into the document — not into a template's contents
+        // or a declarative shadow root — in the order it meets them. The document's title element is
+        // the first of them in tree order (HTML §4.2.2, "the title element"; document.title reads
+        // it), settled once the tree is built, and the result's Title is its text.
+        List<DomElement>? titleElements = null;
         var bodyOpened = false;
 
         // The open elements no end tag in the markup may close: the body at the bottom of the stack,
-        // and in a fragment every element the string wrapper opened — the context element included,
-        // which the fragment parsing algorithm (§13.4) never puts on the stack at all.
+        // and in a fragment every element the string wrapper opened, or the foreign context element
+        // opened ahead of the markup — the context element included, which the fragment parsing
+        // algorithm (§13.4) never puts on the stack at all.
         var endTagFloor = Math.Max(1, declarativeShadowRootFloor);
 
         // An element an end tag stands for — the <p> of a stray </p>, the <br> of a </br> — inserted
@@ -399,10 +396,137 @@ public sealed class HtmlDocumentParser
         {
             bodyOpened = true;
             var parent = openElements.Count > 0 ? openElements.Peek() : body;
-            var target = TableElements.Contains(parent.LocalName)
+            var target = IsHtmlTablePart(parent)
                 ? FosterParent(openElements, body)
                 : InsertionPoint(parent, shadowContents);
             target.AppendChild(document.CreateElement(name));
+        }
+
+        // Pops the open SVG and MathML elements a breakout token leaves (HTML §13.2.6.5): down to an
+        // HTML element, an HTML integration point or a MathML text integration point. Never below the
+        // floor — in a fragment whose context is an SVG or MathML element, that context element.
+        void PopToHtmlContent()
+        {
+            while (openElements.Count > endTagFloor)
+            {
+                var current = openElements.Peek();
+                if (HtmlForeignContent.IsHtml(current) ||
+                    HtmlForeignContent.IsHtmlIntegrationPoint(current) ||
+                    HtmlForeignContent.IsMathMlTextIntegrationPoint(current))
+                {
+                    break;
+                }
+
+                openElements.Pop();
+            }
+        }
+
+        // The rules for parsing tokens in foreign content (HTML §13.2.6.5). Returns false for a token
+        // that is to be reprocessed under the rules for HTML content: a start tag or end tag that
+        // breaks out of foreign content (after the foreign elements are popped), an end tag that
+        // reaches an HTML element before an element of its name, and a DOCTYPE, which the HTML rules
+        // already ignore and report.
+        bool ProcessForeignContent(HtmlToken token)
+        {
+            var current = openElements.Peek();
+            switch (token.Type)
+            {
+                case TokenType.Character:
+                    if (!string.IsNullOrEmpty(token.Data))
+                        InsertText(current, token.Data.Replace('\0', '\uFFFD'));
+                    return true;
+
+                case TokenType.Comment:
+                    current.AppendChild(document.CreateComment(token.Data ?? string.Empty));
+                    return true;
+
+                case TokenType.StartTag:
+                {
+                    var tag = token.Name ?? string.Empty;
+                    if (HtmlForeignContent.IsBreakout(token))
+                    {
+                        errors?.Report("unexpected-html-element-in-foreign-content",
+                            $"<{tag}> is an HTML element and ends the <{ForeignRootName(openElements)}> it is written in, as in a browser.",
+                            token.SourceOffset);
+                        PopToHtmlContent();
+                        return false;
+                    }
+
+                    // "Any other start tag": an element in the adjusted current node's namespace. A
+                    // self-closing flag is acknowledged — the element is inserted and popped at once,
+                    // an SVG <script/> included, which this builder does not run.
+                    var element = HtmlForeignContent.CreateElement(document, token, current.NamespaceUri!);
+                    current.AppendChild(element);
+                    if (!token.SelfClosing)
+                    {
+                        openElements.Push(element);
+                        startTags?.TryAdd(element, token.SourceOffset);
+                    }
+
+                    return true;
+                }
+
+                case TokenType.EndTag:
+                {
+                    var tag = token.Name ?? string.Empty;
+                    if (tag is "br" or "p")
+                    {
+                        errors?.Report("unexpected-html-element-in-foreign-content",
+                            $"</{tag}> is an HTML end tag and ends the <{ForeignRootName(openElements)}> it is written in, as in a browser.",
+                            token.SourceOffset);
+                        PopToHtmlContent();
+                        return false;
+                    }
+
+                    // "Any other end tag": the nearest open element whose tag name, lowercased, is the
+                    // end tag's — unless an HTML element comes first, which hands the end tag to the
+                    // rules for HTML content. An SVG </script> is this case too: it pops the script.
+                    var reachable = openElements.Count - endTagFloor;
+                    var index = 0;
+                    List<string>? stillOpen = null;
+                    foreach (var open in openElements)
+                    {
+                        if (index > 0 && HtmlForeignContent.IsHtml(open))
+                            return false;
+                        if (index >= reachable)
+                            return true;
+
+                        if (string.Equals(open.TagName, tag, StringComparison.OrdinalIgnoreCase))
+                        {
+                            if (stillOpen is not null)
+                            {
+                                errors?.Report("end-tag-closes-open-elements",
+                                    $"</{tag}> also closes {ListElements(stillOpen)}, still open inside it.",
+                                    token.SourceOffset);
+                            }
+
+                            for (var i = 0; i <= index; i++)
+                                openElements.Pop();
+                            return true;
+                        }
+
+                        (stillOpen ??= []).Add(open.LocalName);
+                        index++;
+                    }
+
+                    return true;
+                }
+
+                default:
+                    return false;
+            }
+        }
+
+        // HTML §13.2.6.1, "insert a character": text goes into the Text node already at the insertion
+        // point when there is one. Adjacent character tokens are rare here — the tokenizer emits a
+        // whole run up to the next '<' — but a CDATA section is one of them: the text before, inside
+        // and after <![CDATA[...]]> is one text node, as in a browser.
+        void InsertText(DomNode target, string data)
+        {
+            if (target.LastChild is DomText previous)
+                previous.AppendData(data);
+            else
+                target.AppendChild(document.CreateTextNode(data));
         }
 
         // The document's head and body exist from the start here, so these two flags stand in for
@@ -421,7 +545,28 @@ public sealed class HtmlDocumentParser
         // consumer of the tree.
         var initialInsertionMode = true;
 
-        foreach (var token in new HtmlTokenizer().TokenizeWith(html, errors))
+        // A fragment in an SVG or MathML context starts with that context open, where the string
+        // wrapper's markup would have opened an HTML element of its name. Nothing is tokenized ahead
+        // of the caller's markup, so the tokenizer starts in the data state, which is the state
+        // §13.4 gives any context that is not an HTML element; and the parse is past the initial
+        // insertion mode and in the body, as "reset the insertion mode appropriately" leaves it for
+        // such a context ("in body"). The context is the current node until the markup opens an
+        // element, which makes it the adjusted current node the dispatcher below asks about.
+        if (fragmentContext is not null)
+        {
+            body.AppendChild(fragmentContext);
+            openElements.Push(fragmentContext);
+            bodyOpened = true;
+            initialInsertionMode = false;
+        }
+
+        // The tokenizer asks this builder two questions HTML §13.2.5 leaves to tree construction:
+        // whether a start tag's element is HTML (so a <style> or <title> switches it to RAWTEXT or
+        // RCDATA, and an SVG <style> or <title> does not), and whether a CDATA section is in foreign
+        // content. Tokens are pulled one at a time, so each answer sees every earlier token in the tree.
+        var tokenizerFeedback = new TreeBuilderFeedback(openElements);
+
+        foreach (var token in new HtmlTokenizer().TokenizeWith(html, errors, tokenizerFeedback))
         {
             // Decided here, ahead of the switch, rather than inside the per-type cases: the character
             // case `continue`s past whitespace it drops before the head exists — testing Unicode
@@ -437,6 +582,12 @@ public sealed class HtmlDocumentParser
                         Math.Max(token.SourceOffset, 0));
                 }
             }
+
+            // The tree construction dispatcher (HTML §13.2.6): inside SVG and MathML, a token is
+            // processed by the rules for foreign content, unless it is HTML content again at an
+            // integration point. A token those rules hand back is processed below as HTML.
+            if (UsesForeignContentRules(openElements, token) && ProcessForeignContent(token))
+                continue;
 
             switch (token.Type)
             {
@@ -488,24 +639,50 @@ public sealed class HtmlDocumentParser
                         break;
                     }
 
-                    if (errors is not null && token.SelfClosing && !VoidElements.Contains(tag) && !InForeignContent(openElements, tag))
+                    // An <svg/> or <math/> in HTML content acknowledges its flag: it is the start of
+                    // foreign content, inserted and popped at once.
+                    var foreignRoot = tag is "svg" or "math";
+                    if (errors is not null && token.SelfClosing && !VoidElements.Contains(tag) && !foreignRoot)
                         errors.Report("non-void-html-element-start-tag-with-trailing-solidus", TrailingSolidusMessage(tag), token.SourceOffset);
 
-                    // An SVG or MathML <title> — an inline icon's tooltip, its accessible name — is not
-                    // this branch's: in foreign content (HTML §13.2.6.5) it is an ordinary element where
-                    // it stands, below. This branch used to take every title outside a template, which
-                    // moved an icon's title out of its <svg> into the head and appended its text to the
-                    // document's title.
-                    if (tag.Equals("title", StringComparison.OrdinalIgnoreCase) &&
-                        !IsInTemplate(openElements) &&
-                        !InForeignContent(openElements, tag))
+                    // An SVG or MathML <title> — an inline icon's tooltip, its accessible name — never
+                    // reaches this branch: the rules for foreign content (HTML §13.2.6.5) insert it
+                    // where it stands, above. A title at an HTML integration point is HTML content,
+                    // and an HTML title element.
+                    //
+                    // Before the body, the "before head", "in head" and "after head" modes all put a
+                    // title in the head. Once the body has started, "in body" processes it with the
+                    // "in head" rules (HTML §13.2.6.4.7), which insert it at the appropriate place for
+                    // inserting a node: the current node, or the foster parent in a table. Every
+                    // fragment whose context is not the html or head element is past that point
+                    // before its markup starts — the string wrapper opens the body, and an SVG or
+                    // MathML context opens it too. This branch used to put every title outside a
+                    // template in the head, so div.innerHTML = '<title>t</title>x' lost the title
+                    // with the synthetic document it is parsed in, and a <title> in the body moved
+                    // into the head. The title is always opened, a <title/> too: the flag is not
+                    // acknowledged on a non-void HTML element, and its text follows in RCDATA.
+                    if (tag.Equals("title", StringComparison.OrdinalIgnoreCase))
                     {
-                        headOpened = true;
                         var titleElement = CreateElement(document, token);
-                        head.AppendChild(titleElement);
+                        var inTemplate = IsInTemplate(openElements);
+                        if (!bodyOpened && !inTemplate)
+                        {
+                            headOpened = true;
+                            head.AppendChild(titleElement);
+                        }
+                        else
+                        {
+                            var titleParent = openElements.Count > 0 ? openElements.Peek() : body;
+                            var titleTarget = IsHtmlTablePart(titleParent)
+                                ? FosterParent(openElements, body)
+                                : InsertionPoint(titleParent, shadowContents);
+                            titleTarget.AppendChild(titleElement);
+                        }
+
                         openElements.Push(titleElement);
                         startTags?.TryAdd(titleElement, token.SourceOffset);
-                        documentTitle ??= titleElement;
+                        if (!inTemplate)
+                            (titleElements ??= []).Add(titleElement);
                         break;
                     }
 
@@ -524,11 +701,17 @@ public sealed class HtmlDocumentParser
 
                     bodyOpened = true;
                     AutoCloseCurrent(openElements, tag);
-                    var element = CreateElement(document, token);
+                    // HTML §13.2.6.4.7: an <svg> or <math> start tag in HTML content inserts a foreign
+                    // element, with the SVG or MathML attribute adjustments, and everything after it is
+                    // foreign content until it closes. Both used to be HTML elements, and so was
+                    // everything inside them.
+                    var element = foreignRoot
+                        ? HtmlForeignContent.CreateElement(document, token, tag == "svg" ? DomNamespaces.Svg : DomNamespaces.MathMl)
+                        : CreateElement(document, token);
                     var parent = openElements.Count > 0 ? openElements.Peek() : body;
 
                     if (tag.Equals("tr", StringComparison.OrdinalIgnoreCase) &&
-                        parent.LocalName.Equals("table", StringComparison.OrdinalIgnoreCase))
+                        HtmlForeignContent.IsHtml(parent, "table"))
                     {
                         var tbody = document.CreateElement("tbody");
                         parent.AppendChild(tbody);
@@ -536,7 +719,7 @@ public sealed class HtmlDocumentParser
                         parent = tbody;
                     }
 
-                    var insertionTarget = TableElements.Contains(parent.LocalName) && !TableChildElements.Contains(tag)
+                    var insertionTarget = IsHtmlTablePart(parent) && !TableChildElements.Contains(tag)
                         ? FosterParent(openElements, body)
                         : InsertionPoint(parent, shadowContents);
 
@@ -568,11 +751,8 @@ public sealed class HtmlDocumentParser
                     var tag = token.Name ?? string.Empty;
                     if (tag.Equals("title", StringComparison.OrdinalIgnoreCase))
                     {
-                        if (openElements.Count > 0 &&
-                            openElements.Peek().LocalName.Equals("title", StringComparison.OrdinalIgnoreCase))
-                        {
+                        if (openElements.Count > 0 && HtmlForeignContent.IsHtml(openElements.Peek(), "title"))
                             openElements.Pop();
-                        }
                         break;
                     }
 
@@ -581,12 +761,13 @@ public sealed class HtmlDocumentParser
 
                     if (StructuralTags.Contains(tag) || VoidElements.Contains(tag))
                     {
-                        var foreign = VoidElements.Contains(tag) && InForeignContent(openElements, tag);
-                        if (errors is not null && VoidElements.Contains(tag) && !foreign)
+                        // Only HTML content reaches here: in foreign content a void name is an
+                        // ordinary end tag (§13.2.6.5), and a </br> breaks out of it first.
+                        if (errors is not null && VoidElements.Contains(tag))
                             errors.Report("unexpected-end-tag", VoidEndTagMessage(tag), token.SourceOffset);
 
                         // HTML §13.2.6.4.7: "</br>" is a <br>. Every other void end tag is dropped.
-                        if (tag.Equals("br", StringComparison.OrdinalIgnoreCase) && !foreign)
+                        if (tag.Equals("br", StringComparison.OrdinalIgnoreCase))
                             InsertClosedElement("br");
                         break;
                     }
@@ -646,21 +827,20 @@ public sealed class HtmlDocumentParser
                             bodyOpened = true;
                         }
                     }
-                    var textTarget = TableElements.Contains(parent.LocalName) && !string.IsNullOrWhiteSpace(token.Data)
+                    var textTarget = IsHtmlTablePart(parent) && !string.IsNullOrWhiteSpace(token.Data)
                         ? FosterParent(openElements, body)
                         : InsertionPoint(parent, shadowContents);
 
-                    var text = document.CreateTextNode(token.Data);
                     if (ReferenceEquals(textTarget, root))
                     {
                         // "after head" whitespace goes where the spec's insertion point is — after
                         // the head — but this builder creates the body up front, so appending to
                         // the html element would put it after the body instead.
-                        root.InsertBefore(text, body);
+                        root.InsertBefore(document.CreateTextNode(token.Data), body);
                     }
                     else
                     {
-                        textTarget.AppendChild(text);
+                        InsertText(textTarget, token.Data);
                     }
                     break;
                 }
@@ -683,7 +863,33 @@ public sealed class HtmlDocumentParser
 
         // Only the first HTML title element counts. The text of every title used to be appended, so
         // two titles in a head gave both, and an icon's SVG title joined the page's.
+        var documentTitle = FirstInTreeOrder(titleElements);
         return new HtmlDocumentParseResult(document, documentTitle?.TextContent.Trim() ?? string.Empty, diagnostics);
+    }
+
+    /// <summary>The element of <paramref name="elements"/> that comes first in tree order.</summary>
+    /// <remarks>
+    /// The first one the parse met is usually first in the tree too — a head title before any body
+    /// title, and each title in the body after everything inserted ahead of it — but not a fostered
+    /// one: content fostered out of a table is placed outside it, while a title the parse meets later,
+    /// in a cell, is inside it.
+    /// </remarks>
+    // Broiler-AI:           Origin=AI; Spec=WHATWG-HTML s4.2.2; IP=Low; Security=Low; Resources=1; Fingerprint=TBF
+    // Broiler-Falsified-If: a document whose first title in tree order is not the first one parsed, as in a table whose cell holds a title after one fostered out of it, reports the fostered title's text
+    // Broiler-Human:        PENDING
+    private static DomElement? FirstInTreeOrder(List<DomElement>? elements)
+    {
+        if (elements is null)
+            return null;
+
+        var first = elements[0];
+        for (var i = 1; i < elements.Count; i++)
+        {
+            if ((elements[i].CompareDocumentPosition(first) & DomDocumentPosition.Following) != 0)
+                first = elements[i];
+        }
+
+        return first;
     }
 
     // Broiler-AI:           Origin=AI; IP=Low; Security=High; Resources=6; Fingerprint=TBF
@@ -694,7 +900,11 @@ public sealed class HtmlDocumentParser
 
     /// <inheritdoc cref="ParseFragment(string, string)"/>
     /// <param name="html">The fragment's markup.</param>
-    /// <param name="contextTagName">The context element's tag name.</param>
+    /// <param name="contextTagName">
+    /// The context element's tag name. The context is an HTML element of that name, except that an
+    /// <c>svg</c> or <c>math</c> context starts foreign content; for an SVG or MathML context element
+    /// of any other name, pass the element (<see cref="ParseFragment(string, DomElement, HtmlParseOptions)"/>).
+    /// </param>
     /// <param name="options">
     /// Switches the markup does not answer. Declarative shadow roots belong to
     /// <c>setHTMLUnsafe</c> on this path and not to <c>innerHTML</c>, so a caller implementing the
@@ -718,6 +928,76 @@ public sealed class HtmlDocumentParser
         // child list, so that is where the fragment's nodes are.
         var parsed = context.TemplateContents ?? (DomNode)context;
         foreach (var child in parsed.ChildNodes.ToArray())
+            fragment.AppendChild(child);
+        return new HtmlFragmentParseResult(fragment, result.Diagnostics);
+    }
+
+    // Broiler-AI:           Origin=AI; IP=Low; Security=High; Resources=6; Fingerprint=TBF
+    // Broiler-Falsified-If: an innerHTML-style parse through this overload attaches a shadow root for a template in the markup whose shadowrootmode is open
+    // Broiler-Human:        PENDING
+    public static HtmlFragmentParseResult ParseFragment(string html, DomElement context) =>
+        ParseFragment(html, context, null);
+
+    /// <summary>
+    /// Parses <paramref name="html"/> as the HTML fragment parsing algorithm (HTML §13.4) does for
+    /// <paramref name="context"/>, by its namespace as well as its name.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// A context in the SVG or MathML namespace is the adjusted current node until the markup opens
+    /// an element, so the tree construction dispatcher (§13.2.6) sends the markup to the rules for
+    /// foreign content: <c>g.innerHTML = '&lt;rect/&gt;'</c> gives an SVG <c>rect</c>, with the SVG
+    /// tag and attribute name adjustments, and a <c>&lt;![CDATA[…]]&gt;</c> is text. The HTML start
+    /// tags that cannot appear in foreign content, and <c>&lt;/p&gt;</c> and <c>&lt;/br&gt;</c>, are
+    /// HTML elements in the fragment, as in a browser. An SVG <c>foreignObject</c>, <c>desc</c> or
+    /// <c>title</c>, a MathML <c>annotation-xml</c> whose <c>encoding</c> attribute is
+    /// <c>text/html</c> or <c>application/xhtml+xml</c>, and a MathML <c>mi</c>, <c>mo</c>,
+    /// <c>mn</c>, <c>ms</c> or <c>mtext</c> are integration points, whose content is HTML. Those
+    /// names are matched exactly, as the Standard matches them: an SVG element a script named
+    /// <c>foreignobject</c> is not an integration point. The tokenizer starts in the data state, so an
+    /// SVG <c>style</c>, <c>title</c> or <c>script</c> context reads its markup as markup.
+    /// </para>
+    /// <para>
+    /// Any other context is parsed by its local name, as
+    /// <see cref="ParseFragment(string, string, HtmlParseOptions)"/> parses it: an HTML element, and
+    /// also an element in another namespace or in none, which the Standard would treat as foreign
+    /// content in that namespace. The string overloads always take an HTML element of the name they
+    /// are given (an <c>svg</c> or <c>math</c> context excepted, whose wrapper markup starts foreign
+    /// content), so a caller with the element passes the element.
+    /// </para>
+    /// </remarks>
+    /// <param name="html">The fragment's markup.</param>
+    /// <param name="context">
+    /// The element the fragment is parsed for. It is only read: the parse opens a copy of it, with its
+    /// name and attributes, in the document the fragment's nodes belong to.
+    /// </param>
+    /// <param name="options">
+    /// Switches the markup does not answer. Declarative shadow roots belong to
+    /// <c>setHTMLUnsafe</c> on this path and not to <c>innerHTML</c>, so a caller implementing the
+    /// former passes them in and a caller implementing the latter does not.
+    /// </param>
+    // Broiler-AI:           Origin=AI; Spec=WHATWG-HTML s13.4; IP=Low; Security=High; Resources=6; Fingerprint=TBF
+    // Broiler-Falsified-If: a fragment parsed for an SVG g holds an HTML rect for '<rect/>', or one parsed for an SVG foreignObject holds an SVG div for '<div>'
+    // Broiler-Human:        PENDING
+    public static HtmlFragmentParseResult ParseFragment(string html, DomElement context, HtmlParseOptions? options)
+    {
+        ArgumentNullException.ThrowIfNull(html);
+        ArgumentNullException.ThrowIfNull(context);
+        if (!HtmlForeignContent.IsSvgOrMathMl(context))
+            return ParseFragment(html, context.LocalName, options);
+
+        // §13.4 creates a start tag token from the context's local name and attributes, for the
+        // integration point test among others; a copy carrying both answers the same questions.
+        var document = new DomDocument();
+        var contextCopy = document.CreateElement(context.Name);
+        foreach (var attribute in context.Attributes.Values)
+            contextCopy.SetAttribute(attribute.Name, attribute.Value);
+
+        // The floor is the body and the context: no end tag in the markup closes either, and a
+        // template directly in the markup does not attach a shadow root to the context.
+        var result = ParseDocument(html, document, options, declarativeShadowRootFloor: 2, reportParseErrors: false, contextCopy);
+        var fragment = document.CreateDocumentFragment();
+        foreach (var child in contextCopy.ChildNodes.ToArray())
             fragment.AppendChild(child);
         return new HtmlFragmentParseResult(fragment, result.Diagnostics);
     }
@@ -826,34 +1106,109 @@ public sealed class HtmlDocumentParser
         token.SystemId.Length > 0 && !string.Equals(token.SystemId, "about:legacy-compat", StringComparison.Ordinal);
 
     /// <summary>
-    /// Whether a start or end tag named <paramref name="tag"/> is in SVG or MathML content, where a
-    /// self-closing flag is acknowledged and void-element names mean nothing special.
+    /// Whether the tree construction dispatcher (HTML §13.2.6) sends <paramref name="token"/> to the
+    /// rules for foreign content: the adjusted current node is an SVG or MathML element, and neither
+    /// integration point rule makes the token HTML content again.
     /// </summary>
     /// <remarks>
-    /// Decided from the open elements' names, innermost first: an <c>svg</c> or <c>math</c> element
-    /// is foreign content, and an integration point inside one is HTML content again.
+    /// <para>
+    /// The adjusted current node is the current node here. The Standard substitutes the context
+    /// element when a fragment's stack holds only the html element; this builder opens the context
+    /// element itself — through the string wrapper, or, for an SVG or MathML context, as a copy in
+    /// its own namespace (<see cref="ParseFragment(string, DomElement, HtmlParseOptions)"/>) — so it
+    /// is already the current node.
+    /// </para>
+    /// <para>
+    /// This used to be decided from the open elements' names: an <c>svg</c> or <c>math</c> open
+    /// below the nearest integration point made it foreign content. It only switched the parse error
+    /// report and the <c>&lt;/br&gt;</c> rule, because every element was created in the HTML
+    /// namespace whatever the answer.
+    /// </para>
     /// </remarks>
-    // Broiler-AI:           Origin=AI; IP=Low; Security=High; Resources=3; Fingerprint=TBF
-    // Broiler-Falsified-If: a </br> end tag inside an open <svg> is judged HTML content and inserts a <br> element into the SVG subtree
+    // Broiler-AI:           Origin=AI; Spec=WHATWG-HTML s13.2.6; IP=Low; Security=High; Resources=3; Fingerprint=TBF
+    // Broiler-Falsified-If: a start tag inside <svg><foreignObject> is processed by the rules for foreign content, so a <div> there is created in the SVG namespace
     // Broiler-Human:        PENDING
-    private static bool InForeignContent(Stack<DomElement> openElements, string tag)
+    private static bool UsesForeignContentRules(Stack<DomElement> openElements, HtmlToken token)
     {
-        if (tag.Equals("svg", StringComparison.OrdinalIgnoreCase) || tag.Equals("math", StringComparison.OrdinalIgnoreCase))
-            return true;
+        if (openElements.Count == 0 || token.Type == TokenType.EndOfFile)
+            return false;
 
-        foreach (var open in openElements)
+        var node = openElements.Peek();
+        if (HtmlForeignContent.IsHtml(node))
+            return false;
+
+        var startTag = token.Type == TokenType.StartTag;
+        var name = token.Name;
+        if (HtmlForeignContent.IsMathMlTextIntegrationPoint(node) &&
+            (token.Type == TokenType.Character || startTag && name is not ("mglyph" or "malignmark")))
         {
-            if (open.LocalName.Equals("svg", StringComparison.OrdinalIgnoreCase) ||
-                open.LocalName.Equals("math", StringComparison.OrdinalIgnoreCase))
-            {
-                return true;
-            }
-
-            if (ForeignIntegrationPoints.Contains(open.LocalName))
-                return false;
+            return false;
         }
 
-        return false;
+        if (startTag && name == "svg" &&
+            string.Equals(node.NamespaceUri, DomNamespaces.MathMl, StringComparison.Ordinal) && node.LocalName == "annotation-xml")
+        {
+            return false;
+        }
+
+        return !(HtmlForeignContent.IsHtmlIntegrationPoint(node) && (startTag || token.Type == TokenType.Character));
+    }
+
+    /// <summary>The name of the outermost open <c>svg</c> or <c>math</c> element, for a message.</summary>
+    // Broiler-AI:           Origin=AI; IP=Low; Security=Low; Resources=1; Fingerprint=TBF
+    // Broiler-Human:        PENDING
+    private static string ForeignRootName(Stack<DomElement> openElements)
+    {
+        var root = "svg";
+        foreach (var open in openElements)
+        {
+            if (HtmlForeignContent.IsHtml(open))
+                break;
+            if (open.LocalName is "svg" or "math")
+                root = open.LocalName;
+        }
+
+        return root;
+    }
+
+    /// <summary>
+    /// Whether <paramref name="element"/> is an HTML table, tbody, thead, tfoot or tr — a current node
+    /// that fosters out what the table does not take. An SVG or MathML element of one of those names
+    /// takes it as content.
+    /// </summary>
+    // Broiler-AI:           Origin=AI; IP=Low; Security=High; Resources=1; Fingerprint=TBF
+    // Broiler-Falsified-If: text inside an SVG element named tr is fostered out of the svg instead of becoming that element's child
+    // Broiler-Human:        PENDING
+    private static bool IsHtmlTablePart(DomElement element) =>
+        HtmlForeignContent.IsHtml(element) && TableElements.Contains(element.LocalName);
+
+    /// <summary>
+    /// Whether <paramref name="element"/> bounds a search of the stack of open elements: an HTML element
+    /// named in <paramref name="htmlNames"/>, or, when <paramref name="foreignBoundaries"/> is set, one
+    /// of the MathML and SVG elements every scope but table scope stops at.
+    /// </summary>
+    // Broiler-AI:           Origin=AI; Spec=WHATWG-HTML s13.2.4.2; IP=Low; Security=High; Resources=1; Fingerprint=TBF
+    // Broiler-Falsified-If: an SVG element named table bounds a </div>'s search, so a </div> written after it inside the svg's div is ignored
+    // Broiler-Human:        PENDING
+    private static bool IsBoundary(DomElement element, HashSet<string> htmlNames, bool foreignBoundaries) =>
+        HtmlForeignContent.IsHtml(element)
+            ? htmlNames.Contains(element.LocalName)
+            : foreignBoundaries && HtmlForeignContent.IsForeignScopeBoundary(element);
+
+    /// <summary>
+    /// The tree builder's answers to what the tokenizer asks of it (<see cref="IHtmlTokenizerFeedback"/>),
+    /// read from the stack of open elements as it stands when the tokenizer asks.
+    /// </summary>
+    // Broiler-AI:           Origin=AI; Spec=WHATWG-HTML s13.2.6; IP=Low; Security=High; Resources=1; Fingerprint=TBF
+    // Broiler-Falsified-If: with an <svg> open, a <style> start tag is answered as HTML content, so the tokenizer reads the SVG style's text as RAWTEXT
+    // Broiler-Human:        PENDING
+    private sealed class TreeBuilderFeedback(Stack<DomElement> openElements) : IHtmlTokenizerFeedback
+    {
+        public bool AdjustedCurrentNodeIsForeign =>
+            openElements.Count > 0 && !HtmlForeignContent.IsHtml(openElements.Peek());
+
+        public bool IsHtmlContent(HtmlToken startTag) =>
+            !UsesForeignContentRules(openElements, startTag) || HtmlForeignContent.IsBreakout(startTag);
     }
 
     // Broiler-AI:           Origin=AI; IP=Low; Security=Low; Resources=3; Fingerprint=TBF
@@ -939,6 +1294,7 @@ public sealed class HtmlDocumentParser
             : tag.Equals("template", StringComparison.OrdinalIgnoreCase) || FormattingElements.Contains(tag) ? null
             : SpecialElements;
 
+        var foreignBoundaries = !ReferenceEquals(boundaries, TableScopeBoundaries);
         var reachable = openElements.Count - floor;
         string? blocker = null;
         List<string>? stillOpen = null;
@@ -948,8 +1304,11 @@ public sealed class HtmlDocumentParser
             if (index >= reachable)
                 break;
 
+            // Only an HTML element answers an end tag here: the rules for HTML content look for "an
+            // HTML element with the same tag name", so </title> does not close an SVG title.
             var name = open.LocalName;
-            if (heading ? Headings.Contains(name) : name.Equals(tag, StringComparison.OrdinalIgnoreCase))
+            var html = HtmlForeignContent.IsHtml(open);
+            if (html && (heading ? Headings.Contains(name) : name.Equals(tag, StringComparison.OrdinalIgnoreCase)))
             {
                 if (blocker is null)
                     return new EndTagPlan(EndTagOutcome.Close, index + 1, name, StillOpen: stillOpen);
@@ -959,9 +1318,9 @@ public sealed class HtmlDocumentParser
                     : new EndTagPlan(EndTagOutcome.OutOfScope, Target: name, Blocker: blocker);
             }
 
-            if (blocker is null && boundaries is not null && boundaries.Contains(name))
+            if (blocker is null && boundaries is not null && IsBoundary(open, boundaries, foreignBoundaries))
                 blocker = name;
-            if (blocker is null && !OptionalEndTagElements.Contains(name))
+            if (blocker is null && !(html && OptionalEndTagElements.Contains(name)))
                 (stillOpen ??= []).Add(name);
             index++;
         }
@@ -1020,8 +1379,11 @@ public sealed class HtmlDocumentParser
     {
         foreach (var open in openElements.Reverse())
         {
-            if (OptionalEndTagElements.Contains(open.LocalName) || TextElements.Contains(open.LocalName))
+            if (HtmlForeignContent.IsHtml(open) &&
+                (OptionalEndTagElements.Contains(open.LocalName) || TextElements.Contains(open.LocalName)))
+            {
                 continue;
+            }
 
             errors.Report("unclosed-element",
                 $"<{open.LocalName}> is still open at the end of the input.",
@@ -1052,7 +1414,7 @@ public sealed class HtmlDocumentParser
     {
         foreach (var element in openElements)
         {
-            if (element.LocalName.Equals("template", StringComparison.OrdinalIgnoreCase))
+            if (HtmlForeignContent.IsHtml(element, "template"))
                 return true;
         }
 
@@ -1113,7 +1475,7 @@ public sealed class HtmlDocumentParser
     // Broiler-Human:        PENDING
     private static void AutoCloseCurrent(Stack<DomElement> openElements, string incomingTag)
     {
-        if (openElements.Count == 0)
+        if (openElements.Count == 0 || !HtmlForeignContent.IsHtml(openElements.Peek()))
             return;
 
         var current = openElements.Peek().LocalName;
@@ -1147,7 +1509,7 @@ public sealed class HtmlDocumentParser
     {
         foreach (var element in openElements)
         {
-            if (element.LocalName.Equals("table", StringComparison.OrdinalIgnoreCase))
+            if (HtmlForeignContent.IsHtml(element, "table"))
                 return element.ParentNode ?? body;
         }
         return body;
