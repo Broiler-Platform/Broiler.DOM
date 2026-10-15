@@ -124,7 +124,7 @@ public sealed class HtmlDocumentParser
     // Broiler-Human:        PENDING
     private static readonly HashSet<string> HeadMetadataElements = new(StringComparer.OrdinalIgnoreCase)
     {
-        "style", "link", "meta", "base", "script", "noscript", "title"
+        "style", "link", "meta", "base", "basefont", "bgsound", "script", "noscript", "title"
     };
 
     /// <summary>
