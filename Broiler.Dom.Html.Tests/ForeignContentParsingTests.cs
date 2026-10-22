@@ -60,7 +60,7 @@ public sealed class ForeignContentParsingTests
     {
         var document = Parse($"<svg><{written}></{written}></svg>");
 
-        var element = Assert.Single(Elements(document.Body!).Where(element => element.LocalName != "svg"));
+        var element = Assert.Single(Elements(document.Body!), element => element.LocalName != "svg");
         Assert.Equal(localName, element.LocalName);
         Assert.Equal(localName, element.TagName);
         Assert.Equal(DomNamespaces.Svg, element.NamespaceUri);
