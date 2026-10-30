@@ -20,7 +20,7 @@ concurrency:
 jobs:
   version:
     name: Resolve preview version
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     permissions:
       contents: read
       # Read-only: the retired GitHub Packages feed still holds earlier previews, and the
@@ -64,7 +64,7 @@ jobs:
   publish:
     name: Publish to nuget.org
     needs: [version, validate]
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     permissions:
       contents: read
     env:
